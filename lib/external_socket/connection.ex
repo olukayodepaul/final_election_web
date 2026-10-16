@@ -477,7 +477,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
       |> Map.put("AcrTime", saved.accr_started_at)
       |> Map.put("voteStart", saved.voting_started_at)
       |> Map.put("InecRr", saved.inec_ar_time)
-
     %{report | payload: payload}
   end
 
@@ -619,10 +618,7 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
         saved =
           save_state(report_user_id, fn ->
-            WebApiElection.Elections.ElecCurrentStateQuery.update_party_agent_security(
-              report_user_id,
-              attrs
-            )
+            WebApiElection.Elections.ElecCurrentStateQuery.update_party_agent_security(report_user_id,attrs)
           end)
 
         broadcast_report(state, extract_party_agent(report, saved))
@@ -645,7 +641,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
       report.payload
       |> Map.put("agentArrivalTime", saved.arrival_time)
       |> Map.put("clearedTime", saved.did_inec_clear_agent_time)
-
     %{report | payload: payload}
   end
 

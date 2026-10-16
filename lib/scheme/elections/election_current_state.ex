@@ -71,6 +71,8 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     |> voting_started_at()
     |> is_voters_verify_with_bvas_time()
     |> is_bvas_working_time()
+    |> is_bvas_available_time()
+    |> voting_started_at()
   end
 
   defp inec_ar_device_time(changeset) do
@@ -138,6 +140,46 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     end
   end
 
+  defp is_bvas_available_time(changeset) do
+    case get_change(changeset, :is_bvas_available) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :is_bvas_available)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :is_bvas_available_time, now)
+    end
+  end
+
+  defp is_bvas_available_time(changeset) do
+    case get_change(changeset, :is_bvas_available) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :is_bvas_available)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :is_bvas_available_time, now)
+    end
+  end
+
+  defp voting_started_at(changeset) do
+    case get_change(changeset, :has_voting_commence) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :has_voting_commence)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :voting_started_at, now)
+    end
+  end
+
+
   @security_fields [:security_present]
 
   def security_changeset(elec_current_state, attrs) do
@@ -159,14 +201,34 @@ defmodule WebApiElection.Elections.ElecCurrentState do
 
   @party_fields [
     :is_agent_at_polling_unit,
-    :did_inec_clear_agent,
-    :arrival_time
+    :did_inec_clear_agent
   ]
 
   def party_agent_changeset(elec_current_state, attrs) do
     elec_current_state
     |> cast(attrs, @party_fields)
-    |> keep_first(:arrival_time)
+    |> arrival_time()
+    |> did_inec_clear_agent_time()
+  end
+
+  defp arrival_time(changeset) do
+    case fetch_change(changeset, :is_agent_at_polling_unit) do
+      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+        put_change(changeset, :arrival_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp did_inec_clear_agent_time(changeset) do
+    case fetch_change(changeset, :did_inec_clear_agent) do
+      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+        put_change(changeset, :did_inec_clear_agent_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
   end
 
   # Once a time is stored, never overwrite it
