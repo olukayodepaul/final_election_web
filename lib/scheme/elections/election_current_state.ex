@@ -188,16 +188,37 @@ defmodule WebApiElection.Elections.ElecCurrentState do
   end
 
   @ward_fields [
-    :has_proceed_to_ward,
     :is_pu_officer_at_collation_center,
-    :is_inec_officer_same_as_pu_officer,
-    :is_inec_officer_at_collation_center
+    :has_proceed_to_ward
   ]
 
   def ward_changeset(elec_current_state, attrs) do
     elec_current_state
     |> cast(attrs, @ward_fields)
+    |> is_pu_officer_at_collation_center_ar_time()
+    |> collation_status_time()
   end
+
+  defp is_pu_officer_at_collation_center_ar_time(changeset) do
+    case fetch_change(changeset, :is_pu_officer_at_collation_center) do
+      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+        put_change(changeset, :is_pu_officer_at_collation_center_ar_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp collation_status_time(changeset) do
+    case fetch_change(changeset, :has_proceed_to_ward) do
+      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+        put_change(changeset, :collation_status_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
 
   @party_fields [
     :is_agent_at_polling_unit,
