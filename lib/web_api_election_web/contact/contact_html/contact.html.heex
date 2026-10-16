@@ -1,0 +1,22 @@
+<Layouts.flash_group flash={@flash} />
+
+<div id="result">
+  <%= if @result do %>
+    {@result}
+  <% else %>
+    Result
+  <% end %>
+</div>
+
+<.form for={%{}} action={~p"/contact"} method="post">
+  <div>
+    <.app_input
+      id="contact_name"
+      name="contact[name]"
+      label="Full Name"
+    />
+  </div>
+  <div>
+    <.my_button label="Submit" />
+  </div>
+</.form>

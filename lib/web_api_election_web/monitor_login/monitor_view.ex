@@ -1,0 +1,177 @@
+defmodule WebApiElectionWeb.MonitorLive do
+  use WebApiElectionWeb, :live_view
+  require Logger
+
+  alias WebApiElection.LoginMonitorQuery
+
+  @monitor_role_id 1
+  @url  "wss://a104-105-113-117-13.ngrok-free.app"
+
+  @impl true
+  def mount(_params, _session, socket) do
+    {:ok, assign(socket, error: nil, loading: false)}
+  end
+
+  @impl true
+  def handle_event("login", %{"username" => username, "password" => password}, socket) do
+
+    socket = assign(socket, loading: true, error: nil)
+
+    case LoginMonitorQuery.get_console_user(username, @monitor_role_id) do
+      nil ->
+        {:noreply, assign(socket, loading: false, error: "Invalid username or password")}
+
+      result ->
+        if Bcrypt.verify_pass(password, result.password) do
+          case JWT.Issuer.generate_tokens(%{
+                device_id: "bim#{result.id}",
+                eid: "bim#{result.id}@bimip.com",
+                user_id: "#{result.id}"
+              }) do
+            {:ok, tokens} ->
+
+              # connect to web Socket
+              WebApiElection.ExternalSocket.Supervisor.start_user_socket(
+                result.id,
+                tokens.access,
+                @url
+              )
+
+              {:noreply,
+                socket
+                |> assign(loading: false, error: "")
+                |> push_navigate(to: ~p"/admin/switch?user_id=#{result.id}")
+              }
+
+            {:error, reason} ->
+              Logger.error("Token generation failed for user #{result.id}: #{inspect(reason)}")
+              {:noreply, assign(socket, loading: false, error: "Login failed — please try again")}
+          end
+        else
+          {:noreply, assign(socket, loading: false, error: "Invalid username or password")}
+        end
+    end
+  end
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <Layouts.flash_group flash={@flash} />
+
+    <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-base-200 px-4 py-6">
+
+      <div class="absolute left-[-100px] top-[-100px] h-56 w-56 rounded-full bg-primary/10 blur-3xl"></div>
+      <div class="absolute bottom-[-100px] right-[-100px] h-56 w-56 rounded-full bg-primary/10 blur-3xl"></div>
+
+      <div class="relative w-full max-w-sm rounded-[28px] border border-base-300 bg-base-100 shadow-2xl">
+
+        <div class="absolute inset-x-4 right-4 top-4 z-20 flex items-center justify-between">
+          <a href={~p"/"} class="flex h-10 w-10 items-center justify-center rounded-full text-base-content/60 transition-colors bg-base-200 hover:bg-base-100 hover:text-base-content">
+            <svg viewBox="0 0 24 24" fill="none" class="h-6 w-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </a>
+          <Layouts.theme_toggle />
+        </div>
+
+        <div class="px-6 pb-6 pt-12 sm:px-8">
+
+          <div class="flex justify-center">
+            <div class="flex h-20 w-20 items-center justify-center rounded-full border border-base-300 bg-base-100 shadow-lg">
+              <div class="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-content shadow-md">
+                <svg viewBox="0 0 24 24" fill="none" class="h-7 w-7">
+                  <path d="M12 3L4 7V11C4 16 7.4 20.7 12 22C16.6 20.7 20 16 20 11V7L12 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 text-center">
+            <h1 class="text-2xl font-bold tracking-tight text-base-content">Monitor & Coordinate</h1>
+            <div class="text-sm tracking-tight text-base-content">Login to manage the process</div>
+          </div>
+
+          <form phx-submit="login" class="mt-8 space-y-5">
+
+            <div :if={@error} class="rounded-lg bg-error/10 px-4 py-2 text-sm text-error">
+              {@error}
+            </div>
+
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-base-content">Username</label>
+              <div class="relative">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-base-content/40">
+                  <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                    <path d="M4 6H20V18H4V6Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    <path d="M4 8L12 13L20 8" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+               <input
+                name="username"
+                type="text"
+                placeholder="Enter username"
+                class="input h-14 w-full rounded-full border border-base-300 bg-base-100 pl-6 pr-6 text-sm font-medium shadow-sm focus:border-primary focus:outline-none"
+                required
+              />
+              </div>
+            </div>
+
+            <div>
+              <div class="mb-2 flex items-center justify-between">
+                <label class="text-sm font-semibold text-base-content">Password</label>
+                <a href="#" class="text-xs font-medium text-primary hover:underline">Forgot?</a>
+              </div>
+              <div class="relative">
+                <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-base-content/40">
+                  <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                    <path d="M7 10V7a5 5 0 0 1 10 0v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <rect x="4" y="10" width="16" height="10" rx="2" stroke="currentColor" stroke-width="2"/>
+                  </svg>
+                </div>
+                <input
+                  name="password"
+                  type="password"
+                  placeholder="Enter password"
+                  class="input h-14 w-full rounded-full border border-base-300 bg-base-100 pl-6 pr-6 text-sm font-medium shadow-sm focus:border-primary focus:outline-none"
+                  required
+                />
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <label class="flex cursor-pointer items-center gap-2">
+                <input type="checkbox" name="remember_me" class="checkbox checkbox-primary checkbox-sm" />
+                <span class="text-sm text-base-content/70">Remember me</span>
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={@loading}
+              phx-disable-with="Signing in..."
+              class="btn btn-primary h-13 w-full rounded-full border-0 text-base font-semibold shadow-lg"
+            >
+              {if @loading, do: "Signing in...", else: "Sign In"}
+            </button>
+
+          </form>
+
+        </div>
+
+        <div class="border-t border-base-300 px-6 py-4">
+          <div class="flex items-center justify-center gap-2 text-xs text-base-content/50">
+            <a href="https://bimips.com" target="_blank" class="group flex text-sm justify-between px-3 py-2 hover:bg-base-100 hover:text-base-content transition">
+              <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+                <path d="M12 3L4 7V11C4 16 7.4 20.7 12 22C16.6 20.7 20 16 20 11V7L12 3Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>Powered by bimips</span>
+            </a>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    """
+  end
+end

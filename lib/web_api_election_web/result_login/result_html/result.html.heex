@@ -1,0 +1,250 @@
+<Layouts.flash_group flash={@flash} />
+
+<div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-base-200 px-4 py-6">
+
+  <!-- Background Glow -->
+  <div class="absolute left-[-100px] top-[-100px] h-56 w-56 rounded-full bg-primary/10 blur-3xl"></div>
+  <div class="absolute bottom-[-100px] right-[-100px] h-56 w-56 rounded-full bg-primary/10 blur-3xl"></div>
+
+  <!-- Card -->
+  <div class="relative w-full max-w-sm rounded-[28px] border border-base-300 bg-base-100 shadow-2xl">
+
+    <!-- Theme Toggle -->
+    <div class="absolute inset-x-4 right-4 top-4 z-20 flex items-center justify-between">
+      
+      <a href={~p"/"} class="flex h-10 w-10 items-center justify-center rounded-full text-base-content/60 transition-colors bg-base-200 hover:bg-base-100 hover:text-base-content">
+        <svg viewBox="0 0 24 24" fill="none" class="h-6 w-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </a>
+
+      <Layouts.theme_toggle />
+    </div>
+
+    <div class="px-6 pb-6 pt-12 sm:px-8">
+
+      <!-- Logo -->
+      <div class="flex justify-center">
+
+        <div class="flex h-20 w-20 items-center justify-center rounded-full border border-base-300 bg-base-100 shadow-lg">
+
+          <div class="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-content shadow-md">
+
+            <svg viewBox="0 0 24 24" fill="none" class="h-7 w-7">
+              <path
+                d="M12 3L4 7V11C4 16 7.4 20.7 12 22C16.6 20.7 20 16 20 11V7L12 3Z"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M9 12L11 14L15 10"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Header -->
+      <div class="mt-5 text-center">
+
+        <h1 class="text-2xl font-bold tracking-tight text-base-content">
+          View live result
+        </h1>
+
+      
+      </div>
+
+      <!-- Form -->
+      <form action={~p"/login"} method="post" class="mt-8 space-y-5">
+
+        <!-- CSRF -->
+        <input
+          type="hidden"
+          name="_csrf_token"
+          value={Plug.CSRFProtection.get_csrf_token()}
+        />
+
+        <!-- Email -->
+        <div>
+
+          <label class="mb-2 block text-sm font-semibold text-base-content">
+            Email Address
+          </label>
+
+          <div class="relative">
+
+            <!-- Icon -->
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-base-content/40">
+
+              <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                <path
+                  d="M4 6H20V18H4V6Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M4 8L12 13L20 8"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+              </svg>
+
+            </div>
+
+            <input
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              class="input h-14  w-full rounded-full border border-base-300 bg-base-100 pl-6 pr-6 text-sm font-medium shadow-sm focus:border-primary focus:outline-none"
+              required
+            />
+
+          </div>
+
+        </div>
+
+        <!-- Password -->
+        <div>
+
+          <div class="mb-2 flex items-center justify-between">
+
+            <label class="text-sm font-semibold text-base-content">
+              Password
+            </label>
+
+            <a
+              href="#"
+              class="text-xs font-medium text-primary hover:underline"
+            >
+              Forgot?
+            </a>
+
+          </div>
+
+          <div class="relative">
+
+            <!-- Left Icon -->
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-base-content/40">
+
+              <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                <path
+                  d="M7 10V7a5 5 0 0 1 10 0v3"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+                <rect
+                  x="4"
+                  y="10"
+                  width="16"
+                  height="10"
+                  rx="2"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
+              </svg>
+
+            </div>
+
+            <!-- Eye -->
+            <div class="absolute inset-y-0 right-0 flex items-center pr-4 text-base-content/40">
+
+              <svg viewBox="0 0 24 24" fill="none" class="h-5 w-5">
+                <path
+                  d="M2 12C2 12 5.5 5 12 5C18.5 5 22 12 22 12C22 12 18.5 19 12 19C5.5 19 2 12 2 12Z"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linejoin="round"
+                />
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="3"
+                  stroke="currentColor"
+                  stroke-width="2"
+                />
+              </svg>
+
+            </div>
+
+            <input
+              name="password"
+              type="password"
+              placeholder="Enter password"
+              class="input h-14  w-full rounded-full border border-base-300 bg-base-100 pl-6 pr-6 text-sm font-medium shadow-sm focus:border-primary focus:outline-none"
+              required
+            />
+
+          </div>
+
+        </div>
+
+        <!-- Remember -->
+        <div class="flex items-center justify-between">
+
+          <label class="flex cursor-pointer items-center gap-2">
+
+            <input
+              type="checkbox"
+              name="remember_me"
+              class="checkbox checkbox-primary checkbox-sm"
+            />
+
+            <span class="text-sm text-base-content/70">
+              Remember me
+            </span>
+
+          </label>
+
+        </div>
+
+        <!-- Login Button -->
+        <button
+          type="submit"
+          class="btn btn-primary h-13 w-full rounded-full border-0 text-base font-semibold shadow-lg"
+        >
+          Sign In
+        </button>
+
+      </form>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="border-t border-base-300 px-6 py-4">
+<a href="https://bimips.com" target="_blank" class="group flex text-sm  justify-between   px-3 py-2 hover:bg-base-100 hover:text-base-content transition">
+      <div class="flex items-center justify-center gap-2 text-xs text-base-content/50">
+
+        <svg viewBox="0 0 24 24" fill="none" class="h-4 w-4">
+          <path
+            d="M12 3L4 7V11C4 16 7.4 20.7 12 22C16.6 20.7 20 16 20 11V7L12 3Z"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+
+        <span>
+          Powered by BIMIPS
+        </span>
+
+      </div>
+      </a>
+
+    </div>
+
+  </div>
+
+</div>
