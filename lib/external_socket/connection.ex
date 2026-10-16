@@ -88,6 +88,8 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
   def send_chat_message(message) do
     frame = build_message_frame(message)
+    msg_type = Map.get(message, :msg_type, "TEXT")
+    stored = if msg_type == "TEXT", do: message.message, else: Map.get(message, :media_url, "")
 
     case Registry.lookup(WebApiElection.UserSocketRegistry, message.from) do
       [{pid, _}] ->
@@ -98,8 +100,8 @@ defmodule WebApiElection.ExternalSocket.Connection do
                message.ward_code,
                message.lg_code,
                message.state_code,
-               message.message,
-               "TEXT",
+               stored,
+               msg_type,
                1,
                "SENT"
              ) do
@@ -342,7 +344,7 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
   defp handle_ping_ack(state, _decoded), do: {:ok, state}
 
-  ## --- Message handling ---------------------------------------------------
+  ## --- Message handling -------------------------------------------------------
 
   defp handle_message(state, %Bimip.MessageScheme{payload: {:message, message}}) do
     with {:ok, outer} <- Jason.decode(message.payload),
@@ -366,53 +368,82 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
   defp handle_message(state, _decoded), do: {:ok, state}
 
+  ## --- Attr helpers -----------------------------------------------------------
+
+  # Only writes a key when there is a real value, so a payload that omits a
+  # field never overwrites a good stored value with "" / "NULL" / nil.
+  defp put_if(attrs, _key, nil), do: attrs
+  defp put_if(attrs, key, value), do: Map.put(attrs, key, value)
+
+  defp put_time_if(attrs, key, true, time), do: Map.put(attrs, key, time)
+  defp put_time_if(attrs, _key, _false, _time), do: attrs
+
+  # Runs the elec_current_state update and returns the saved row, or nil on failure.
+  defp save_state(report_user_id, fun) do
+    case fun.() do
+      {:ok, saved} ->
+        saved
+
+      other ->
+        Logger.error("elec_current_state update failed for #{report_user_id}: #{inspect(other)}")
+        nil
+    end
+  end
+
+  ## --- Polling unit (presiding officer) report --------------------------------
+
   defp insert_polling_unit_report(state, user_id, outer, inner) do
     case WebApiElection.Reporting.PollingUnitReportQuery.insert_report(
-          user_id,
-          outer["id"],
-          outer["polling_unit_code"],
-          outer["ward_code"],
-          outer["lg_code"],
-          outer["state_code"],
-          inner
-        ) do
-      {:ok, %WebApiElection.Reporting.PollingUnitReport{payload: payload, user_id: report_user_id} = report} ->
+           user_id,
+           outer["id"],
+           outer["polling_unit_code"],
+           outer["ward_code"],
+           outer["lg_code"],
+           outer["state_code"],
+           inner
+         ) do
+      {:ok,
+       %WebApiElection.Reporting.PollingUnitReport{payload: payload, user_id: report_user_id} =
+           report} ->
         report_user_id = to_int(report_user_id)
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
         elec_outcome =
           case payload["electionOutcome"] do
-            1 -> "Concluded"
-            2 -> "Cancelled"
-            _ -> ""
+            1 -> "Ongoing"
+            2 -> "Collation"
+            3 -> "Concluded"
+            4 -> "Cancelled"
+            5 -> "Disrupted"
+            _ -> nil
+          end
+
+        acr_method =
+          case payload["accreditationMethod"] do
+            1 -> "Manual"
+            2 -> "Bvas"
+            _ -> nil
           end
 
         attrs =
-          %{
-            inec_ar_time: now,
-            official_no: payload["numberOfInecOfficial"] && to_string(payload["numberOfInecOfficial"]),
-            is_bvas_available: payload["isBvnMachineAvail"],
-            is_bvas_working: payload["isBvbDeviceGoodCond"],
-            is_voters_verify: payload["isVotersVerifyWithBvas"],
-            has_accr_commence: payload["hasAccredCommence"],
-            has_voting_commence: payload["hasVolingCommence"],
-            is_voters_verify_with_bvas: payload["isVotersVerifyWithBvas"],
-            is_conclusive: elec_outcome,
-            is_conclusive_time: now
-          }
+          %{}
+          |> put_if(:inec_ar_device_time, payload["arrivalTime"])
+          |> put_if(:official_no, payload["numberOfInecOfficial"] && to_string(payload["numberOfInecOfficial"]))
+          |> put_if(:is_bvas_available, payload["isBvnMachineAvail"])
+          |> put_if(:is_bvas_working, payload["isBvbDeviceGoodCond"])
+          |> put_if(:has_accr_commence, payload["hasAccredCommence"])
+          |> put_if(:has_voting_commence, payload["hasVolingCommence"])
+          |> put_if(:is_voters_verify_with_bvas, acr_method)
+          |> put_if(:is_conclusive, elec_outcome)
+          |> put_if(:is_conclusive_time, if(elec_outcome, do: now))
           |> put_time_if(:accr_started_at, payload["hasAccredCommence"] == true, now)
           |> put_time_if(:voting_started_at, payload["hasVolingCommence"] == true, now)
 
         # 1. Save the state first, so we know the stored (first) times
         saved =
-          case WebApiElection.Elections.ElecCurrentStateQuery.upsert_state(report_user_id, attrs) do
-            {:ok, saved} ->
-              saved
-
-            other ->
-              Logger.error("elec_current_state update failed for #{report_user_id}: #{inspect(other)}")
-              nil
-          end
+          save_state(report_user_id, fn ->
+            WebApiElection.Elections.ElecCurrentStateQuery.upsert_state(report_user_id, attrs)
+          end)
 
         # 2. Broadcast the report with the stored server times instead of the phone's text
         broadcast_report(state, with_server_times(report, saved))
@@ -424,11 +455,9 @@ defmodule WebApiElection.ExternalSocket.Connection do
         Logger.error("Unexpected insert_report result: #{inspect(other)}")
     end
   rescue
-    e -> Logger.error("insert_polling_unit_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
+    e ->
+      Logger.error("insert_polling_unit_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
   end
-
-  defp put_time_if(attrs, key, true, time), do: Map.put(attrs, key, time)
-  defp put_time_if(attrs, _key, _false, _time), do: attrs
 
   # Changes the broadcast copy only. Nothing here is saved.
   defp with_server_times(report, nil) do
@@ -442,15 +471,19 @@ defmodule WebApiElection.ExternalSocket.Connection do
       |> Map.put("arrivalTime", saved.inec_ar_time)
       |> Map.put("accrStartedAt", saved.accr_started_at)
       |> Map.put("votingStartedAt", saved.voting_started_at)
+      |> Map.put("isVotersVerifyWithBvasTime", saved.is_voters_verify_with_bvas_time)
+      |> Map.put("BvasFunc", saved.is_bvas_working_time)
+      |> Map.put("Bavai", saved.is_bvas_available_time)
+      |> Map.put("AcrTime", saved.accr_started_at)
+      |> Map.put("voteStart", saved.voting_started_at)
+      |> Map.put("InecRr", saved.inec_ar_time)
 
     %{report | payload: payload}
   end
 
+  ## --- Polling unit security report -------------------------------------------
+
   defp insert_polling_unit_security_report(state, user_id, outer, inner) do
-
-    IO.inspect("fhsdvbfsdjbvfjdbvdf")
-    IO.inspect(inner)
-
     case WebApiElection.Reporting.PollingUnitSecurityReportQuery.insert_report(
            user_id,
            outer["id"],
@@ -460,17 +493,19 @@ defmodule WebApiElection.ExternalSocket.Connection do
            outer["state_code"],
            inner
          ) do
-      {:ok, %WebApiElection.Reporting.PollingSecuriyReport{payload: payload, user_id: report_user_id} = report} ->
-        broadcast_report(state, report)
+      {:ok,
+       %WebApiElection.Reporting.PollingSecuriyReport{payload: payload, user_id: report_user_id} =
+           report} ->
         report_user_id = to_int(report_user_id)
 
-        attrs = %{security_present: report.payload["securityPresence"]}
+        attrs = put_if(%{}, :security_present, payload["securityPresence"])
 
-        update_or_log(
-          fn -> WebApiElection.Elections.ElecCurrentStateQuery.update_security(report_user_id, attrs) end,
-          report_user_id,
-          "security state"
-        )
+        saved =
+          save_state(report_user_id, fn ->
+            WebApiElection.Elections.ElecCurrentStateQuery.update_security(report_user_id, attrs)
+          end)
+
+        broadcast_report(state, extract_security(report, saved))
 
       {:error, changeset} ->
         Logger.error("Failed to insert security report: #{inspect(changeset)}")
@@ -479,35 +514,54 @@ defmodule WebApiElection.ExternalSocket.Connection do
         Logger.error("Unexpected insert_report result: #{inspect(other)}")
     end
   rescue
-    e -> Logger.error("insert_polling_unit_security_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
+    e ->
+      Logger.error(
+        "insert_polling_unit_security_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}"
+      )
   end
+
+  defp extract_security(report, nil), do: report
+
+  defp extract_security(report, saved) do
+    payload = Map.put(report.payload, "securityPresentTime", saved.security_present_time)
+    %{report | payload: payload}
+  end
+
+  ## --- Ward security (collation) report ---------------------------------------
 
   defp insert_ward_security_report(state, user_id, outer, inner) do
     case WebApiElection.Reporting.WardSecurityReportQuery.insert_report(
-          user_id,
-          outer["id"],
-          outer["polling_unit_code"],
-          outer["ward_code"],
-          outer["lg_code"],
-          outer["state_code"],
-          inner
-        ) do
-      {:ok, %WebApiElection.Reporting.WardSecurityReport{payload: payload, user_id: report_user_id} = report} ->
-        broadcast_report(state, report)
+           user_id,
+           outer["id"],
+           outer["polling_unit_code"],
+           outer["ward_code"],
+           outer["lg_code"],
+           outer["state_code"],
+           inner
+         ) do
+      {:ok,
+       %WebApiElection.Reporting.WardSecurityReport{payload: payload, user_id: report_user_id} =
+           report} ->
         report_user_id = to_int(report_user_id)
 
-        attrs = %{
-          has_proceed_to_ward: payload["isInecOfficialProceedToWardCollationCenter"],
-          is_pu_officer_at_collation_center: payload["isPuOfficialArriveAtCollationCenter"],
-          is_inec_officer_same_as_pu_officer: payload["isInecOfficialSameAsPuOfficer"],
-          is_inec_officer_at_collation_center: payload["isInecOfficialArriveAtCollationCenter"]
-        }
+        party_agent_movement =
+          case String.upcase(to_string(payload["partyAgentMovement"])) do
+            "ARRIVED" -> "ARRIVED COLLATION CENTER"
+            "DEPARTED" -> "DEPARTED PU"
+            _ -> nil
+          end
 
-        update_or_log(
-          fn -> WebApiElection.Elections.ElecCurrentStateQuery.update_ward_security(report_user_id, attrs) end,
-          report_user_id,
-          "ward security state"
-        )
+        attrs =
+          %{}
+          |> put_if(:is_pu_officer_at_collation_center, party_agent_movement)
+          |> put_if(:has_proceed_to_ward, payload["collationStatus"])
+
+        saved =
+          save_state(report_user_id, fn ->
+            WebApiElection.Elections.ElecCurrentStateQuery.update_ward_security(report_user_id, attrs)
+          end)
+
+        broadcast_report(state, extract_ward_collations(report, saved))
 
       {:error, changeset} ->
         Logger.error("Failed to insert ward security report: #{inspect(changeset)}")
@@ -516,8 +570,22 @@ defmodule WebApiElection.ExternalSocket.Connection do
         Logger.error("Unexpected insert_report result: #{inspect(other)}")
     end
   rescue
-    e -> Logger.error("insert_ward_security_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
+    e ->
+      Logger.error("insert_ward_security_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
   end
+
+  defp extract_ward_collations(report, nil), do: report
+
+  defp extract_ward_collations(report, saved) do
+    payload =
+      report.payload
+      |> Map.put("collationArTime", saved.is_pu_officer_at_collation_center_ar_time)
+      |> Map.put("collationStatusTime", saved.collation_status_time)
+
+    %{report | payload: payload}
+  end
+
+  ## --- Party agent report ------------------------------------------------------
 
   defp insert_party_agent_report(state, user_id, outer, inner) do
     result =
@@ -532,9 +600,32 @@ defmodule WebApiElection.ExternalSocket.Connection do
       )
 
     case result do
-      {:ok, %WebApiElection.Reporting.PartyAgentReport{} = report} ->
-        broadcast_report(state, report)
-        update_current_state(report)
+      {:ok,
+       %WebApiElection.Reporting.PartyAgentReport{payload: payload, user_id: report_user_id} =
+           report} ->
+        report_user_id = to_int(report_user_id)
+
+        agent_at_pu =
+          case payload["agentClearance"] do
+            1 -> "Cleared"
+            2 -> "Not Cleared"
+            _ -> nil
+          end
+
+        attrs =
+          %{}
+          |> put_if(:is_agent_at_polling_unit, payload["isAtAssignedUnit"])
+          |> put_if(:did_inec_clear_agent, agent_at_pu)
+
+        saved =
+          save_state(report_user_id, fn ->
+            WebApiElection.Elections.ElecCurrentStateQuery.update_party_agent_security(
+              report_user_id,
+              attrs
+            )
+          end)
+
+        broadcast_report(state, extract_party_agent(report, saved))
 
       {:error, changeset} ->
         Logger.error("Failed to insert party agent report: #{inspect(changeset)}")
@@ -543,34 +634,22 @@ defmodule WebApiElection.ExternalSocket.Connection do
         Logger.error("Unexpected insert_report result: #{inspect(other)}")
     end
   rescue
-    e -> Logger.error("insert_party_agent_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
+    e ->
+      Logger.error("insert_party_agent_report crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
   end
 
-  defp update_current_state(%{user_id: user_id} = report) do
-    user_id = to_int(user_id)
+  defp extract_party_agent(report, nil), do: report
 
-    update_or_log(
-      fn ->
-        WebApiElection.Elections.ElecCurrentStateQuery.update_party_agent_security(
-          user_id,
-          party_agent_attrs(report)
-        )
-      end,
-      user_id,
-      "party agent security state"
-    )
+  defp extract_party_agent(report, saved) do
+    payload =
+      report.payload
+      |> Map.put("agentArrivalTime", saved.arrival_time)
+      |> Map.put("clearedTime", saved.did_inec_clear_agent_time)
+
+    %{report | payload: payload}
   end
 
-  defp party_agent_attrs(%{payload: payload, arrival_time: arrival_time}) do
-    %{
-      is_agent_at_polling_unit: payload["isAtAssignedUnit"],
-      did_inec_clear_agent: payload["isAgentVerifiedByInec"]
-    }
-    |> maybe_put_arrival_time(arrival_time)
-  end
-
-  defp maybe_put_arrival_time(attrs, nil), do: attrs
-  defp maybe_put_arrival_time(attrs, arrival_time), do: Map.put(attrs, :arrival_time, arrival_time)
+  ## --- Chat message -------------------------------------------------------------
 
   defp insert_message(state, user_id, outer, _inner) do
     msg_type = outer["msg_type"]
@@ -606,21 +685,12 @@ defmodule WebApiElection.ExternalSocket.Connection do
     e -> Logger.error("insert_message crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
   end
 
-  defp update_or_log(fun, report_user_id, label) do
-    case fun.() do
-      {:ok, _updated} ->
-        :ok
-
-      {:error, :not_found} ->
-        Logger.error("No elec_current_state row for user_id=#{inspect(report_user_id)} (#{label})")
-
-      {:error, changeset} ->
-        Logger.error("Failed to update #{label}: #{inspect(changeset)}")
-    end
-  end
-
   defp broadcast_report(state, report) do
-    Phoenix.PubSub.broadcast(WebApiElection.PubSub,"inec_official:#{state.user_id}",{:inec_official, report})
+    Phoenix.PubSub.broadcast(
+      WebApiElection.PubSub,
+      "inec_official:#{state.user_id}",
+      {:inec_official, report}
+    )
   end
 
   ## --- Safe parsing helpers -------------------------------------------------
@@ -635,12 +705,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
   end
 
   defp to_int(_), do: nil
-
-  defp safe_from_unix(ms) do
-    DateTime.from_unix!(ms, :millisecond)
-  rescue
-    _ -> nil
-  end
 
   defp parse_user_id(id) when is_binary(id) do
     case Integer.parse(id) do
@@ -682,6 +746,7 @@ defmodule WebApiElection.ExternalSocket.Connection do
   defp build_message_frame(message) do
     id = Ecto.UUID.generate()
     timestamp = System.system_time(:millisecond)
+    msg_type = Map.get(message, :msg_type, "TEXT")
 
     payload_json =
       Jason.encode!(%{
@@ -689,9 +754,10 @@ defmodule WebApiElection.ExternalSocket.Connection do
         "category" => "1",
         "sub_category" => "1",
         "sub_sub_category" => "0",
-        "type" => "TEXT",
-        "msg_type" => "TEXT",
+        "type" => msg_type,
+        "msg_type" => msg_type,
         "message" => message.message,
+        "remote_media_url" => Map.get(message, :media_url, ""),
         "leadingType" => "1",
         "trailType" => "1",
         "msg_state" => 0,

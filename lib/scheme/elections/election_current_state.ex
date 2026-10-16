@@ -12,7 +12,7 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     field :is_voters_verify,           :boolean
     field :has_accr_commence,          :boolean
     field :has_voting_commence,        :boolean
-    field :is_conclusive_time,         :naive_datetime # timestamp(0) without time zone in SQL
+    field :is_conclusive_time,         :utc_datetime # timestamp(0) without time zone in SQL
     field :are_security_present,       :boolean
     field :is_agent_at_polling_unit,   :boolean
 
@@ -27,18 +27,18 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     field :inec_ar_device_time,        :string
 
     # Timestamp fields
-    field :is_voters_verify_with_bvas_time,           :naive_datetime
-    field :collation_status_time,                      :naive_datetime
-    field :result_upload_to_irev_time,                 :naive_datetime
-    field :is_bvas_working_time,                       :naive_datetime
-    field :is_bvas_available_time,                     :naive_datetime
-    field :did_inec_clear_agent_time,                  :naive_datetime
-    field :security_present_time,                      :naive_datetime
-    field :is_pu_officer_at_collation_center_ar_time, :naive_datetime
+    field :is_voters_verify_with_bvas_time,           :utc_datetime
+    field :collation_status_time,                      :utc_datetime
+    field :result_upload_to_irev_time,                 :utc_datetime
+    field :is_bvas_working_time,                       :utc_datetime
+    field :is_bvas_available_time,                     :utc_datetime
+    field :did_inec_clear_agent_time,                  :utc_datetime
+    field :security_present_time,                      :utc_datetime
+    field :is_pu_officer_at_collation_center_ar_time, :utc_datetime
 
-    field :accr_started_at,   :naive_datetime
-    field :voting_started_at, :naive_datetime
-    field :arrival_time,      :naive_datetime
+    field :accr_started_at,   :utc_datetime
+    field :voting_started_at, :utc_datetime
+    field :arrival_time,      :utc_datetime
 
     # Ward collation center fields
     field :is_inec_officer_at_collation_center, :boolean
@@ -50,27 +50,92 @@ defmodule WebApiElection.Elections.ElecCurrentState do
   end
 
   @updatable_fields [
-    :inec_ar_time,
+    :inec_ar_device_time,
     :official_no,
     :is_bvas_available,
     :is_bvas_working,
-    :is_voters_verify,
     :has_accr_commence,
     :has_voting_commence,
     :is_voters_verify_with_bvas,
-    :accr_started_at,
-    :voting_started_at,
     :is_conclusive,
     :is_conclusive_time,
-    :inec_ar_device_time
+    :accr_started_at,
+    :voting_started_at
   ]
 
   def changeset(elec_current_state, attrs) do
     elec_current_state
     |> cast(attrs, @updatable_fields)
-    |> keep_first(:inec_ar_time)
-    |> keep_first(:accr_started_at)
-    |> keep_first(:voting_started_at)
+    |> inec_ar_device_time()
+    |> accr_started_at()
+    |> voting_started_at()
+    |> is_voters_verify_with_bvas_time()
+    |> is_bvas_working_time()
+  end
+
+  defp inec_ar_device_time(changeset) do
+    case get_change(changeset, :inec_ar_device_time) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :inec_ar_device_time)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :inec_ar_time, now)
+    end
+  end
+
+  defp accr_started_at(changeset) do
+    case get_change(changeset, :has_accr_commence) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :has_accr_commence)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :accr_started_at, now)
+    end
+  end
+
+  defp voting_started_at(changeset) do
+    case get_change(changeset, :has_voting_commence) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :has_voting_commence)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :voting_started_at, now)
+    end
+  end
+
+  defp is_voters_verify_with_bvas_time(changeset) do
+    case get_change(changeset, :is_voters_verify_with_bvas) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :is_voters_verify_with_bvas)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :is_voters_verify_with_bvas_time, now)
+    end
+  end
+
+  defp is_bvas_working_time(changeset) do
+    case get_change(changeset, :is_bvas_working) do
+      nil ->
+        # Value is the same as in the DB (or wasn't sent). Keep the old time.
+        delete_change(changeset, :is_bvas_working)
+
+      _new_value ->
+        # Value is different from the DB, so stamp a fresh time.
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+        put_change(changeset, :is_bvas_working_time, now)
+    end
   end
 
   @security_fields [:security_present]
