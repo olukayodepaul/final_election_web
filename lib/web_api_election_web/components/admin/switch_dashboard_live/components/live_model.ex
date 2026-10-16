@@ -98,8 +98,8 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
   @ward_security_labels %{
     "collationStatus" => "Collation Status",
     "partyAgentMovement" => "Party Agent Movement",
-    "isPartyAgentsArriveAtCollationCenter" => "Party Agents Arrived at Collation Centre",
     "isPartyAgentsProceedToWard" => "Party Agents Proceeded to Ward",
+    "isPartyAgentsArriveAtCollationCenter" => "Party Agents Arrived at Collation Centre",
     "isAgentsDeniedAccess" => "Agents Denied Access",
     "materialsGuarded" => "Materials Guarded",
     "securityPersonnelPresent" => "Security Personnel Present",
@@ -1225,7 +1225,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
   # Section cards shown in the Ward Collation panel, in display order.
   @ward_groups [
     {"Party Agents", "hero-users",
-     ~w(partyAgentMovement isPartyAgentsArriveAtCollationCenter isPartyAgentsProceedToWard isAgentsDeniedAccess)},
+     ~w(partyAgentMovement isPartyAgentsProceedToWard isPartyAgentsArriveAtCollationCenter isAgentsDeniedAccess)},
     {"Security & Materials", "hero-shield-check",
      ~w(materialsGuarded securityPersonnelPresent presidingOfficerIdentified)},
     {"EC8B Forms", "hero-document-check", ~w(isEc8bCompleted isEc8bCopiesIssued)},
@@ -1238,10 +1238,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
 
   @ward_hidden ~w(isLat isLng collationStatus)
 
+  # If any of these is true, "Party Agents Proceeded to Ward" is shown as true.
+  @ward_proceed_triggers ~w(isPartyAgentsArriveAtCollationCenter)
+
   attr :report, :any, required: true
 
   def ward_collation_panel(assigns) do
-    payload = assigns.report.payload || %{}
+    payload = (assigns.report.payload || %{}) |> ward_apply_rules()
     {passed, total} = ward_score(payload)
 
     assigns =
@@ -1353,6 +1356,15 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
       </div>
     </div>
     """
+  end
+
+  # If any trigger key is true, force "isPartyAgentsProceedToWard" to true.
+  defp ward_apply_rules(payload) do
+    if Enum.any?(@ward_proceed_triggers, &(ward_normalize(payload[&1]) == true)) do
+      Map.put(payload, "isPartyAgentsProceedToWard", true)
+    else
+      payload
+    end
   end
 
   attr :value, :any, default: nil
