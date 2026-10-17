@@ -66,126 +66,26 @@ defmodule WebApiElection.Elections.ElecCurrentState do
   def changeset(elec_current_state, attrs) do
     elec_current_state
     |> cast(attrs, @updatable_fields)
-    |> inec_ar_device_time()
-    |> accr_started_at()
-    |> voting_started_at()
-    |> is_voters_verify_with_bvas_time()
-    |> is_bvas_working_time()
-    |> is_bvas_available_time()
-    |> voting_started_at()
   end
-
-  defp inec_ar_device_time(changeset) do
-    case get_change(changeset, :inec_ar_device_time) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :inec_ar_device_time)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :inec_ar_time, now)
-    end
-  end
-
-  defp accr_started_at(changeset) do
-    case get_change(changeset, :has_accr_commence) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :has_accr_commence)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :accr_started_at, now)
-    end
-  end
-
-  defp voting_started_at(changeset) do
-    case get_change(changeset, :has_voting_commence) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :has_voting_commence)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :voting_started_at, now)
-    end
-  end
-
-  defp is_voters_verify_with_bvas_time(changeset) do
-    case get_change(changeset, :is_voters_verify_with_bvas) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :is_voters_verify_with_bvas)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :is_voters_verify_with_bvas_time, now)
-    end
-  end
-
-  defp is_bvas_working_time(changeset) do
-    case get_change(changeset, :is_bvas_working) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :is_bvas_working)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :is_bvas_working_time, now)
-    end
-  end
-
-  defp is_bvas_available_time(changeset) do
-    case get_change(changeset, :is_bvas_available) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :is_bvas_available)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :is_bvas_available_time, now)
-    end
-  end
-
-  defp is_bvas_available_time(changeset) do
-    case get_change(changeset, :is_bvas_available) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :is_bvas_available)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :is_bvas_available_time, now)
-    end
-  end
-
-  defp voting_started_at(changeset) do
-    case get_change(changeset, :has_voting_commence) do
-      nil ->
-        # Value is the same as in the DB (or wasn't sent). Keep the old time.
-        delete_change(changeset, :has_voting_commence)
-
-      _new_value ->
-        # Value is different from the DB, so stamp a fresh time.
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
-        put_change(changeset, :voting_started_at, now)
-    end
-  end
-
 
   @security_fields [:security_present]
 
   def security_changeset(elec_current_state, attrs) do
     elec_current_state
     |> cast(attrs, @security_fields)
+    |> security_present_time()
   end
+
+  defp security_present_time(changeset) do
+    case fetch_change(changeset, :security_present) do
+      {:ok, new_value} when new_value != changeset.data.security_present ->
+        put_change(changeset, :security_present_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
 
   @ward_fields [
     :is_pu_officer_at_collation_center,
@@ -201,7 +101,7 @@ defmodule WebApiElection.Elections.ElecCurrentState do
 
   defp is_pu_officer_at_collation_center_ar_time(changeset) do
     case fetch_change(changeset, :is_pu_officer_at_collation_center) do
-      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+      {:ok, new_value} when new_value != changeset.data.is_pu_officer_at_collation_center ->
         put_change(changeset, :is_pu_officer_at_collation_center_ar_time, DateTime.utc_now() |> DateTime.truncate(:second))
 
       _ ->
@@ -211,7 +111,7 @@ defmodule WebApiElection.Elections.ElecCurrentState do
 
   defp collation_status_time(changeset) do
     case fetch_change(changeset, :has_proceed_to_ward) do
-      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+      {:ok, new_value} when new_value != changeset.data.has_proceed_to_ward ->
         put_change(changeset, :collation_status_time, DateTime.utc_now() |> DateTime.truncate(:second))
 
       _ ->
@@ -234,7 +134,7 @@ defmodule WebApiElection.Elections.ElecCurrentState do
 
   defp arrival_time(changeset) do
     case fetch_change(changeset, :is_agent_at_polling_unit) do
-      {:ok, new_value} when new_value != changeset.data.did_inec_clear_agent ->
+      {:ok, new_value} when new_value != changeset.data.is_agent_at_polling_unit ->
         put_change(changeset, :arrival_time, DateTime.utc_now() |> DateTime.truncate(:second))
 
       _ ->
