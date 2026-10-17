@@ -66,6 +66,83 @@ defmodule WebApiElection.Elections.ElecCurrentState do
   def changeset(elec_current_state, attrs) do
     elec_current_state
     |> cast(attrs, @updatable_fields)
+    |> inec_ar_device_time()
+    |> is_bvas_available_time()
+    |> is_bvas_working_time()
+    |> accr_started_at()
+    |> is_conclusive_time()
+    |> voting_started_at()
+    |> is_voters_verify_with_bvas_time()
+  end
+
+  defp inec_ar_device_time(changeset) do
+    case fetch_change(changeset, :inec_ar_device_time) do
+      {:ok, new_value} when new_value != changeset.data.inec_ar_device_time ->
+        put_change(changeset, :inec_ar_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp is_bvas_available_time(changeset) do
+    case fetch_change(changeset, :is_bvas_available) do
+      {:ok, new_value} when new_value != changeset.data.is_bvas_available ->
+        put_change(changeset, :is_bvas_available_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp is_bvas_working_time(changeset) do
+    case fetch_change(changeset, :is_bvas_working) do
+      {:ok, new_value} when new_value != changeset.data.is_bvas_working ->
+        put_change(changeset, :is_bvas_working_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp accr_started_at(changeset) do
+    case fetch_change(changeset, :has_accr_commence) do
+      {:ok, new_value} when new_value != changeset.data.has_accr_commence ->
+        put_change(changeset, :accr_started_at, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp is_conclusive_time(changeset) do
+    case fetch_change(changeset, :is_conclusive) do
+      {:ok, new_value} when new_value != changeset.data.is_conclusive ->
+        put_change(changeset, :is_conclusive_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp voting_started_at(changeset) do
+    case fetch_change(changeset, :has_voting_commence) do
+      {:ok, new_value} when new_value != changeset.data.has_voting_commence ->
+        put_change(changeset, :voting_started_at, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp is_voters_verify_with_bvas_time(changeset) do
+    case fetch_change(changeset, :is_voters_verify_with_bvas) do
+      {:ok, new_value} when new_value != changeset.data.is_voters_verify_with_bvas ->
+        put_change(changeset, :is_voters_verify_with_bvas_time, DateTime.utc_now() |> DateTime.truncate(:second))
+
+      _ ->
+        changeset
+    end
   end
 
   @security_fields [:security_present]
@@ -152,12 +229,5 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     end
   end
 
-  # Once a time is stored, never overwrite it
-  defp keep_first(changeset, field) do
-    if Map.get(changeset.data, field) do
-      delete_change(changeset, field)
-    else
-      changeset
-    end
-  end
+
 end

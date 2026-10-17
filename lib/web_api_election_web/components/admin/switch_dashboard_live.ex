@@ -320,7 +320,6 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
   end
 
   defp report_patch_fields(%WebApiElection.Reporting.PollingUnitReport{payload: payload}) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     elec_outcome =
       case payload["electionOutcome"] do
@@ -347,10 +346,10 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     |> maybe_put(:has_accr_commence, payload["hasAccredCommence"])
     |> maybe_put(:has_voting_commence, payload["hasVolingCommence"])
     |> maybe_put(:is_voters_verify_with_bvas, acr_method)
-    |> maybe_put(:accr_started_at, payload["AcrTime"])
+    |> maybe_put(:accr_started_at, payload["accrStartedAt"])
     |> maybe_put(:voting_started_at, payload["voteStart"])
     |> maybe_put(:is_conclusive, elec_outcome)
-    |> maybe_put(:is_conclusive_time, now)
+    |> maybe_put(:is_conclusive_time, payload["elecConClusive"])
     |> maybe_put(:is_voters_verify_with_bvas_time, payload["isVotersVerifyWithBvasTime"])
     |> maybe_put(:is_bvas_working_time, payload["BvasFunc"])
     |> maybe_put(:is_bvas_available_time, payload["Bavai"])

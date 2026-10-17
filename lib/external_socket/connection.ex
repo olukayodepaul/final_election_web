@@ -406,7 +406,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
        %WebApiElection.Reporting.PollingUnitReport{payload: payload, user_id: report_user_id} =
            report} ->
         report_user_id = to_int(report_user_id)
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
 
         elec_outcome =
           case payload["electionOutcome"] do
@@ -435,9 +434,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
           |> put_if(:has_voting_commence, payload["hasVolingCommence"])
           |> put_if(:is_voters_verify_with_bvas, acr_method)
           |> put_if(:is_conclusive, elec_outcome)
-          |> put_if(:is_conclusive_time, if(elec_outcome, do: now))
-          |> put_time_if(:accr_started_at, payload["hasAccredCommence"] == true, now)
-          |> put_time_if(:voting_started_at, payload["hasVolingCommence"] == true, now)
 
         # 1. Save the state first, so we know the stored (first) times
         saved =
@@ -477,6 +473,7 @@ defmodule WebApiElection.ExternalSocket.Connection do
       |> Map.put("AcrTime", saved.accr_started_at)
       |> Map.put("voteStart", saved.voting_started_at)
       |> Map.put("InecRr", saved.inec_ar_time)
+      |> Map.put("elecConClusive", saved.is_conclusive_time)
     %{report | payload: payload}
   end
 
