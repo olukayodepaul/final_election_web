@@ -5,7 +5,7 @@ defmodule WebApiElectionWeb.MonitorLive do
   alias WebApiElection.LoginMonitorQuery
 
   @monitor_role_id 1
-  @url  "wss://a104-105-113-117-13.ngrok-free.app"
+  @url  "wss://molecular-stung-squash.ngrok-free.dev"
 
   @impl true
   def mount(_params, _session, socket) do
