@@ -132,6 +132,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
 
                   <td class="px-3 py-2 align-middle text-center border-r border-slate-200 dark:border-slate-800">
                     <.arrival_badge present={v.has_accr_commence} time={v.accr_started_at} />
+
                   </td>
 
                   <td class="px-3 py-2 align-middle text-center border-r border-slate-200 dark:border-slate-800">
