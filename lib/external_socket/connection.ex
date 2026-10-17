@@ -470,7 +470,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
       |> Map.put("isVotersVerifyWithBvasTime", saved.is_voters_verify_with_bvas_time)
       |> Map.put("BvasFunc", saved.is_bvas_working_time)
       |> Map.put("Bavai", saved.is_bvas_available_time)
-      |> Map.put("AcrTime", saved.accr_started_at)
       |> Map.put("voteStart", saved.voting_started_at)
       |> Map.put("InecRr", saved.inec_ar_time)
       |> Map.put("elecConClusive", saved.is_conclusive_time)
