@@ -51,20 +51,27 @@ defmodule WebApiElection.Reporting.ElectionResultReport do
   end
 
   @doc """
-  Returns `%{user_id => [report, ...]}` (newest first).
+  Returns `%{user_id => [report, ...]}` (newest first) for the given users,
+  limited to one form code (default "ec8a"). Other forms in the table are ignored.
   Only light columns are selected, so `results`/`variables` are not loaded.
   """
-  def list_for_users([]), do: %{}
+  def list_for_users(user_ids, form \\ "ec8a")
 
-  def list_for_users(user_ids) do
+  def list_for_users([], _form), do: %{}
+
+  def list_for_users(user_ids, form) do
+    form = String.downcase(form)
+
     from(r in __MODULE__,
       where: r.user_id in ^user_ids,
+      where: r.election_form == ^form,
       order_by: [desc: r.created_at],
       select: %{
         id: r.id,
         user_id: r.user_id,
         pu_id: r.pu_id,
         election_name: r.election_name,
+        election_form: r.election_form,
         created_at: r.created_at
       }
     )

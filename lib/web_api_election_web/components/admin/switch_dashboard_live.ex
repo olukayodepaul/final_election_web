@@ -48,7 +48,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
   @elections [%{id: 1, name: "Presidential"}]
 
   @ec8a_nav_items [
-    {"ec8a-1", "Presidential", "hero-document-chart-bar"}
+     {"ec8a-1", "Election Form", "hero-document-chart-bar"}
   ]
 
   @implemented_pages ~w(dashboard parties live cdrs election-result-view)
@@ -272,6 +272,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     {:noreply, socket |> patch_field_officer(report) |> refresh_open_report(report)}
   end
 
+  # Only EC8A uploads belong on the EC8A page; other forms are ignored.
+  def handle_info({:election_form_uploaded, %{election_form: "ec8a"} = summary}, socket) do
+    {:noreply, add_ec8a_report(socket, summary)}
+  end
+
+  def handle_info({:election_form_uploaded, _other_form}, socket), do: {:noreply, socket}
+
   defp patch_field_officer(socket, report) do
     case socket.assigns[:field_officer] do
       %Phoenix.LiveView.AsyncResult{ok?: true, result: officers} = async ->
@@ -287,6 +294,24 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
           end)
 
         assign(socket, :field_officer, %{async | result: updated_officers})
+
+      _not_loaded_yet ->
+        socket
+    end
+  end
+
+  # Adds the new upload to the already-loaded :ec8a_reports map
+  # (%{user_id => [report, ...]}, newest first). Removing by id first means
+  # a retried/duplicate send never shows up twice.
+  defp add_ec8a_report(socket, summary) do
+    case socket.assigns[:ec8a_reports] do
+      %Phoenix.LiveView.AsyncResult{ok?: true, result: by_user} = async when is_map(by_user) ->
+        updated =
+          Map.update(by_user, summary.user_id, [summary], fn list ->
+            [summary | Enum.reject(list, &(&1.id == summary.id))]
+          end)
+
+        assign(socket, :ec8a_reports, %{async | result: updated})
 
       _not_loaded_yet ->
         socket

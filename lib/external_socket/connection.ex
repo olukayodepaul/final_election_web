@@ -643,38 +643,38 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
   ## --- Election forms (EC8A etc.) upload --------------------------------------
 
-  defp election_forms_upload(_state, user_id, outer, inner) do
+  defp election_forms_upload(state, user_id, outer, inner) do
     {election_type, election_name} =
       case String.split(outer["leadingName"] || "", "//", parts: 2) do
         [type, name] -> {type, name}
         [name] -> {nil, name}
       end
 
-      type_map = decode_json(outer["type"])
-      details = decode_json(type_map["electionDetails"])
+    type_map = decode_json(outer["type"])
+    details = decode_json(type_map["electionDetails"])
 
-      attrs = %{
-        uuids: outer["id"],
-        user_id: user_id,
-        election_type: election_type,
-        election_name: election_name,
-        election_form: type_map["formCode"],
-        pu: outer["polling_unit_code"],
-        ward: outer["ward_code"],
-        lg: outer["lg_code"],
-        states: outer["state_code"],
-        pu_id: details["puId"],
-        ward_id: details["wardId"],
-        lg_id: details["lgId"],
-        state_id: details["stateId"],
-        results: decode_json(inner),
-        image_url: outer["remote_media_url"],
-        variables: type_map
-      }
+    attrs = %{
+      uuids: outer["id"],
+      user_id: user_id,
+      election_type: election_type,
+      election_name: election_name,
+      election_form: type_map["formCode"],
+      pu: outer["polling_unit_code"],
+      ward: outer["ward_code"],
+      lg: outer["lg_code"],
+      states: outer["state_code"],
+      pu_id: details["puId"],
+      ward_id: details["wardId"],
+      lg_id: details["lgId"],
+      state_id: details["stateId"],
+      results: decode_json(inner),
+      image_url: outer["remote_media_url"],
+      variables: type_map
+    }
 
     case WebApiElection.Reporting.ElectionResultReportQuery.insert_report(attrs) do
-      {:ok, _report} ->
-        :ok
+      {:ok, report} ->
+        broadcast_election_form(state, report)
 
       {:error, changeset} ->
         Logger.error("Failed to insert election form upload: #{inspect(changeset.errors)}")
@@ -684,6 +684,24 @@ defmodule WebApiElection.ExternalSocket.Connection do
       Logger.error("election_forms_upload crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
   end
 
+  # Same light shape as ElectionResultReport.list_for_users/1, so the LiveView
+  # can drop it straight into its reports map.
+    defp broadcast_election_form(state, report) do
+    summary = %{
+      id: report.id,
+      user_id: report.user_id,
+      pu_id: report.pu_id,
+      election_name: report.election_name,
+      election_form: report.election_form,
+      created_at: report.created_at
+    }
+
+    Phoenix.PubSub.broadcast(
+      WebApiElection.PubSub,
+      "inec_official:#{state.user_id}",
+      {:election_form_uploaded, summary}
+    )
+  end
   ## --- Chat message -------------------------------------------------------------
 
   defp insert_message(state, user_id, outer, _inner) do
