@@ -922,6 +922,24 @@ CREATE TRIGGER trg_ecs_updated_at
 -- 15. POLLING UNIT REPORT
 -- ============================================================
 
+create table election_result_report(
+	id          BIGSERIAL       PRIMARY KEY,
+	uuids       TEXT   NOT NULL,
+	user_id     BIGINT      NOT NULL,
+	election_type varchar(100),
+	election_name varchar(200),
+	election_form varchar(100),
+	pu  varchar(100),
+	ward  varchar(100),
+	lg  varchar(100),
+	states  varchar(100),
+	results JSONB       NOT NULL DEFAULT '{}'::jsonb,
+	image_url TEXT,
+	variables JSONB       NOT NULL DEFAULT '{}'::jsonb,
+	created_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ     NOT NULL DEFAULT NOW()
+)
+
 CREATE TABLE polling_unit_report (
     id          BIGSERIAL   PRIMARY KEY,
 	user_id     BIGINT      NOT NULL,

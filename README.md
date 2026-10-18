@@ -1,3 +1,6 @@
+
+WebApiElection.Reporting.ElectionResultReportEC8AQuery.module_info(:compile)[:source]
+
 defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
   @moduledoc """
   LiveView conversion of the static "P — Admin Panel" mockup.
