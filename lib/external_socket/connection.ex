@@ -644,6 +644,11 @@ defmodule WebApiElection.ExternalSocket.Connection do
   ## --- Election forms (EC8A etc.) upload --------------------------------------
 
   defp election_forms_upload(state, user_id, outer, inner) do
+
+
+    IO.inspect(outer)
+    IO.inspect(inner)
+
     {election_type, election_name} =
       case String.split(outer["leadingName"] || "", "//", parts: 2) do
         [type, name] -> {type, name}
@@ -653,20 +658,35 @@ defmodule WebApiElection.ExternalSocket.Connection do
     type_map = decode_json(outer["type"])
     details = decode_json(type_map["electionDetails"])
 
+    {pus, wards, lgs, states} =
+      case outer["trailName"] do
+        "ec8a" ->
+          details = decode_json(type_map["electionDetails"])
+          {details["puId"], details["wardId"], details["lgId"], details["stateId"]}
+
+        "ec8a_video" ->
+          {type_map["puId"], type_map["wardId"], type_map["lgId"], type_map["stateId"]}
+
+        other ->
+          flat? = is_binary(other) and String.ends_with?(other, "_video")
+          d = if flat?, do: type_map, else: decode_json(type_map["electionDetails"])
+          {d["puId"], d["wardId"], d["lgId"], d["stateId"]}
+      end
+
     attrs = %{
       uuids: outer["id"],
       user_id: user_id,
       election_type: election_type,
       election_name: election_name,
-      election_form: type_map["formCode"],
+      election_form: outer["trailName"],
       pu: outer["polling_unit_code"],
       ward: outer["ward_code"],
       lg: outer["lg_code"],
       states: outer["state_code"],
-      pu_id: details["puId"],
-      ward_id: details["wardId"],
-      lg_id: details["lgId"],
-      state_id: details["stateId"],
+      pu_id: pus,
+      ward_id: wards,
+      lg_id: lgs,
+      state_id: states,
       results: decode_json(inner),
       image_url: outer["remote_media_url"],
       variables: type_map

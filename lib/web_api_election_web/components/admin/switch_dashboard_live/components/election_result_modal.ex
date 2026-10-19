@@ -23,6 +23,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.ElectionResultM
     assigns =
       assigns
       |> assign(:parties, top_parties(assigns.record[:party_results]))
+      |> assign(:videos, assigns.record[:videos] || [])
       |> assign(:checks, checks)
       |> assign(:confirmed, confirmed)
       |> assign(:total_checks, total)
@@ -90,6 +91,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.ElectionResultM
                   <.icon name="hero-tag" class="h-3 w-3" />
                   {humanize(@record[:election_type])}
                 </span>
+                <span
+                  :if={@videos != []}
+                  class="inline-flex items-center gap-1 rounded-full bg-rose-400/15 px-2 py-0.5 text-[11px] font-medium text-rose-200 ring-1 ring-inset ring-rose-300/30"
+                >
+                  <.icon name="hero-video-camera" class="h-3 w-3" />
+                  {length(@videos)} {if length(@videos) == 1, do: "video", else: "videos"}
+                </span>
               </div>
             </div>
 
@@ -125,7 +133,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.ElectionResultM
 
         <%!-- ============ BODY ============ --%>
         <div class="grid flex-1 grid-cols-1 gap-4 overflow-y-auto p-5 lg:grid-cols-5">
-          <%!-- Left: sheet photo + checklist --%>
+          <%!-- Left: sheet photo + checklist + environment videos --%>
           <div class="space-y-4 lg:col-span-2">
             <.result_panel title="Result sheet" icon="hero-photo">
               <:actions>
@@ -164,6 +172,52 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.ElectionResultM
                   <.check_pill state={c.state} />
                 </li>
               </ul>
+            </.result_panel>
+
+            <.result_panel title="Environment videos" icon="hero-video-camera">
+              <:actions>
+                <span class="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                  {length(@videos)} {if length(@videos) == 1, do: "video", else: "videos"}
+                </span>
+              </:actions>
+
+              <div
+                :if={@videos == []}
+                class="flex h-28 flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[12px] text-slate-400 dark:border-slate-700 dark:bg-slate-950"
+              >
+                <.icon name="hero-video-camera-slash" class="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                No environment video recorded
+              </div>
+
+              <div :if={@videos != []} id="env-videos" class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                <div :for={{video, idx} <- Enum.with_index(@videos, 1)} id={"env-video-#{video.id}"} class="space-y-1">
+                  <div class="overflow-hidden rounded-lg bg-black ring-1 ring-slate-200 dark:ring-slate-800">
+                    <%!-- onplay pauses any other video in the modal, so only one plays at a time --%>
+                    <video
+                      controls
+                      playsinline
+                      preload="metadata"
+                      src={video.url <> "#t=0.1"}
+                      onplay="document.querySelectorAll('#env-videos video').forEach(v => { if (v !== this) v.pause() })"
+                      class="aspect-video w-full object-contain"
+                    >
+                      Your browser can't play this video.
+                    </video>
+                  </div>
+                  <div class="flex items-center justify-between px-0.5">
+                    <span class="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Video {idx}</span>
+                    <a
+                      href={video.url}
+                      target="_blank"
+                      rel="noopener"
+                      class="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400"
+                    >
+                      Open
+                      <.icon name="hero-arrow-top-right-on-square" class="h-3 w-3" />
+                    </a>
+                  </div>
+                </div>
+              </div>
             </.result_panel>
           </div>
 

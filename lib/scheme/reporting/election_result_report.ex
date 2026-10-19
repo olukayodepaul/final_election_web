@@ -81,7 +81,7 @@ defmodule WebApiElection.Reporting.ElectionResultReport do
 
   @doc """
   Loads one full report and returns it in the map shape `election_result_modal` expects,
-  or `nil` if it doesn't exist.
+  or `nil` if it doesn't exist. Also loads the environment videos attached to it.
   """
   def get_for_preview(id) do
     from(r in __MODULE__,
@@ -91,9 +91,56 @@ defmodule WebApiElection.Reporting.ElectionResultReport do
     )
     |> Repo.one()
     |> case do
-      nil -> nil
-      {report, user_name} -> to_preview(report, user_name)
+      nil ->
+        nil
+
+      {report, user_name} ->
+        report
+        |> to_preview(user_name)
+        |> Map.put(:videos, list_videos(report))
     end
+  end
+
+  @doc """
+  Environment videos attached to a form row.
+
+  Everything comes from the row that was clicked: user_id, pu_id, ward_id,
+  lg_id, state_id, election_type and election_form. The form code is NOT
+  hard-coded: the clicked `election_form` ("ec8a", "ec60e", ...) gets
+  "_video" appended ("ec8a_video", "ec60e_video", ...).
+
+  Returns `[%{id, url, created_at}]`, oldest first (Video 1, Video 2, ...).
+  """
+  def list_videos(%__MODULE__{election_form: form} = r) when is_binary(form) do
+    video_form = video_form_for(form)
+
+    # Ecto raises on `== ^nil`, so rows missing any key simply have no videos.
+    keys = [r.user_id, r.pu_id, r.ward_id, r.lg_id, r.state_id, r.election_type]
+
+    if Enum.any?(keys, &is_nil/1) do
+      []
+    else
+      from(v in __MODULE__,
+        where: v.user_id == ^r.user_id,
+        where: v.pu_id == ^r.pu_id,
+        where: v.ward_id == ^r.ward_id,
+        where: v.lg_id == ^r.lg_id,
+        where: v.state_id == ^r.state_id,
+        where: v.election_type == ^r.election_type,
+        where: v.election_form == ^video_form,
+        order_by: [asc: v.created_at, asc: v.id],
+        select: %{id: v.id, url: v.image_url, created_at: v.created_at}
+      )
+      |> Repo.all()
+      |> Enum.reject(&(&1.url in [nil, ""]))
+    end
+  end
+
+  def list_videos(_), do: []
+
+  defp video_form_for(form) do
+    form = String.downcase(form)
+    if String.ends_with?(form, "_video"), do: form, else: form <> "_video"
   end
 
   defp to_preview(%__MODULE__{} = r, user_name) do
