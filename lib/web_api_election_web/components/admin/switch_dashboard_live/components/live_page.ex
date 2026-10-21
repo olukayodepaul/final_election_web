@@ -103,10 +103,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
               <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900 shadow-[0_1px_0_0_rgb(226_232_240)] dark:shadow-[0_1px_0_0_rgb(30_41_59)]">
                 <tr class="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   <.header_cell label="Field Officer" full="Field officer assigned to this polling unit" align="left" />
-                  <.header_cell label="PU" full="Polling Unit" align="left" />
-                  <.header_cell label="Ward" full="Ward" align="left" />
-                  <.header_cell label="LG" full="Local Government" align="left" />
-                  <.header_cell label="State" full="State" align="left" />
+                  <.header_cell label="Location" full="Polling Unit, Ward, Local Government and State" align="left" />
                   <.header_cell label={"Reg.\nVoters"} full="Registered Voters" align="center" />
                   <.header_cell label="PVC" full="PVC Collected" align="center" />
                   <.header_cell label={"Party Agent \nAttendance"} full="Party Agent present at polling unit" align="center" />
@@ -145,10 +142,18 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
                     </div>
                   </td>
 
-                  <td class="px-4 py-3 align-middle whitespace-nowrap"><.loc_cell name={v.pu_name} code={v.pu_code} /></td>
-                  <td class="px-4 py-3 align-middle whitespace-nowrap"><.loc_cell name={v.ward_name} code={v.ward_code} /></td>
-                  <td class="px-4 py-3 align-middle whitespace-nowrap"><.loc_cell name={v.lg_name} code={v.lg_code} /></td>
-                  <td class="px-4 py-3 align-middle whitespace-nowrap"><.loc_cell name={v.state_name} code={v.state_code} /></td>
+                  <td class="px-4 py-3 align-middle whitespace-nowrap">
+                    <.location_cell
+                      pu_name={v.pu_name}
+                      pu_code={v.pu_code}
+                      ward_name={v.ward_name}
+                      ward_code={v.ward_code}
+                      lg_name={v.lg_name}
+                      lg_code={v.lg_code}
+                      state_name={v.state_name}
+                      state_code={v.state_code}
+                    />
+                  </td>
 
                   <td class="px-4 py-3 align-middle whitespace-nowrap text-center tabular-nums font-mono font-semibold text-slate-700 dark:text-slate-300">{v.rgv}</td>
                   <td class="px-4 py-3 align-middle whitespace-nowrap text-center tabular-nums font-mono font-semibold text-slate-700 dark:text-slate-300">{v.pc}</td>
@@ -277,14 +282,40 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
   defp tone_classes("amber"), do: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400"
   defp tone_classes(_), do: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
 
+  attr :pu_name, :any, default: nil
+  attr :pu_code, :any, default: nil
+  attr :ward_name, :any, default: nil
+  attr :ward_code, :any, default: nil
+  attr :lg_name, :any, default: nil
+  attr :lg_code, :any, default: nil
+  attr :state_name, :any, default: nil
+  attr :state_code, :any, default: nil
+
+  # PU on top (bold), then Ward / LG / State stacked underneath.
+  defp location_cell(assigns) do
+    ~H"""
+    <div class="leading-tight space-y-0.5">
+      <div class="flex items-baseline gap-1.5">
+        <span class="font-semibold text-slate-800 dark:text-slate-100">{@pu_name}</span>
+        <span class="text-[11px] font-mono text-slate-400 dark:text-slate-500">{@pu_code}</span>
+      </div>
+      <.location_line label="Ward" name={@ward_name} code={@ward_code} />
+      <.location_line label="LG" name={@lg_name} code={@lg_code} />
+      <.location_line label="State" name={@state_name} code={@state_code} />
+    </div>
+    """
+  end
+
+  attr :label, :string, required: true
   attr :name, :any, default: nil
   attr :code, :any, default: nil
 
-  defp loc_cell(assigns) do
+  defp location_line(assigns) do
     ~H"""
-    <div class="leading-tight">
-      <div class="font-medium text-slate-800 dark:text-slate-200">{@name}</div>
-      <div class="text-[11px] font-mono text-slate-400 dark:text-slate-500">{@code}</div>
+    <div class="flex items-baseline gap-1.5 text-[11px]">
+      <span class="w-9 shrink-0 font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{@label}</span>
+      <span class="text-slate-600 dark:text-slate-300">{@name}</span>
+      <span class="font-mono text-slate-400 dark:text-slate-500">{@code}</span>
     </div>
     """
   end
