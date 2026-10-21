@@ -6,6 +6,8 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
   use WebApiElectionWeb, :html
   alias Phoenix.LiveView.JS
 
+  @lagos_offset_seconds 3600
+
   attr :if, :boolean, default: true
   attr :officer, :map, required: true
   attr :messages, :list, default: []
@@ -141,7 +143,11 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
   }
 
   def live_modal(assigns) do
-    assigns = assign(assigns, :categories, @categories)
+    assigns =
+      assigns
+      |> assign(:categories, @categories)
+      |> assign(:perf, perf_view(assigns.officer))
+      |> assign(:irev, irev_view(assigns.officer))
 
     ~H"""
     <div
@@ -268,53 +274,114 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
             </div>
 
             <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
-              <!-- Compact analytics row -->
+              <!-- Compact analytics row: click a card to open its details below -->
               <div class="grid grid-cols-2 gap-3">
-                <div class="relative rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4">
-                  <button
-                    type="button"
-                    class="absolute top-3 right-3 text-slate-300 dark:text-slate-600 hover:text-slate-400 dark:hover:text-slate-500"
-                  >
-                    <.icon name="hero-information-circle" class="h-4 w-4" />
-                  </button>
-                  <div class="flex items-center gap-3">
-                    <div class="h-9 w-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-center shrink-0">
-                      <.icon name="hero-exclamation-triangle" class="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    </div>
-                    <div>
-                      <span class="block text-[11px] font-medium tracking-wide uppercase text-slate-500 dark:text-slate-400">
-                        Total Incidents
-                      </span>
-                      <div class="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                        {length(Map.get(@notifications, :incident, []))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <!-- Performance Score card -->
+                <button
+                  type="button"
+                  phx-click={JS.toggle(to: "#perf-detail-panel")}
+                  class="relative w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4 text-left transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
+                >
+                  <span class="absolute top-3 right-3 text-slate-300 dark:text-slate-600">
+                    <.icon name="hero-chevron-down" class="h-4 w-4" />
+                  </span>
 
-                <div class="relative rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4">
-                  <button
-                    type="button"
-                    class="absolute top-3 right-3 text-slate-300 dark:text-slate-600 hover:text-slate-400 dark:hover:text-slate-500"
-                  >
-                    <.icon name="hero-information-circle" class="h-4 w-4" />
-                  </button>
-                  <div class="flex items-center gap-3">
+                  <div class="flex items-start gap-3">
                     <div class="h-9 w-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-center shrink-0">
-                      <.icon name="hero-bell-alert" class="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                      <.icon name="hero-chart-bar" class="h-4 w-4 text-slate-500 dark:text-slate-400" />
                     </div>
                     <div>
                       <span class="block text-[11px] font-medium tracking-wide uppercase text-slate-500 dark:text-slate-400">
-                        Total Alerts
+                        Performance
                       </span>
-                      <div class="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                        {Enum.reduce(@categories, 0, fn {key, _label, _icon}, acc ->
-                          acc + length(Map.get(@notifications, key, []))
-                        end)}
+                      <span class="block text-[11px] font-medium tracking-wide uppercase text-slate-500 dark:text-slate-400">
+                        Score
+                      </span>
+                      <div class={["text-2xl font-semibold tabular-nums mt-0.5", perf_text_class(@perf.state)]}>
+                        {@perf.score_text || "—"}
                       </div>
                     </div>
                   </div>
-                </div>
+                </button>
+
+                <!-- Upload Result to IReV card -->
+                <button
+                  type="button"
+                  phx-click={JS.toggle(to: "#irev-detail-panel")}
+                  class="relative w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4 text-left transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
+                >
+                  <span class="absolute top-3 right-3 text-slate-300 dark:text-slate-600">
+                    <.icon name="hero-chevron-down" class="h-4 w-4" />
+                  </span>
+
+                  <div class="flex items-start gap-3">
+                    <div class="h-9 w-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-center shrink-0">
+                      <.icon name="hero-cloud-arrow-up" class="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                    </div>
+                    <div>
+                      <span class="block text-[11px] font-medium tracking-wide uppercase text-slate-500 dark:text-slate-400">
+                        Upload Result
+                      </span>
+                      <span class="block text-[11px] font-medium tracking-wide uppercase text-slate-500 dark:text-slate-400">
+                        To IReV
+                      </span>
+                      <div class={["text-lg font-semibold mt-0.5", irev_text_class(@irev.uploaded)]}>
+                        {irev_label(@irev.uploaded)}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <!-- Performance Score detail (toggled by the card above) -->
+              <div id="perf-detail-panel" class="hidden text-xs">
+                <.report_card title="Performance Score" icon="hero-chart-bar">
+                  <.report_line label="Status">
+                    <span class={[pill_classes(), ward_tone_class(perf_tone(@perf.state))]}>
+                      {perf_label(@perf.state)}
+                    </span>
+                  </.report_line>
+                  <.report_line label="Score">
+                    <div class="flex items-center justify-end gap-2">
+                      <div class="h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                        <div
+                          class={["h-full rounded-full transition-all duration-500", perf_bar_class(@perf.state)]}
+                          style={"width: #{@perf.pct}%"}
+                        >
+                        </div>
+                      </div>
+                      <span class="font-semibold tabular-nums">{@perf.score_text || "—"}</span>
+                    </div>
+                  </.report_line>
+                  <.report_line label="Last Updated">
+                    <span class="font-mono text-[11px] font-semibold">{@perf.time}</span>
+                  </.report_line>
+                </.report_card>
+              </div>
+
+              <!-- IReV upload detail (toggled by the card above) -->
+              <div id="irev-detail-panel" class="hidden text-xs">
+                <.report_card title="IReV Upload" icon="hero-cloud-arrow-up">
+                  <.report_line label="Status">
+                    <span class={[pill_classes(), ward_tone_class(irev_tone(@irev.uploaded))]}>
+                      {irev_label(@irev.uploaded)}
+                    </span>
+                  </.report_line>
+                  <.report_line label="Uploaded At">
+                    <span class="font-mono text-[11px] font-semibold">{@irev.time}</span>
+                  </.report_line>
+                  <div :if={@irev.uploaded == true} class="px-3 py-2.5">
+                    <button
+                      type="button"
+                      phx-click={JS.push("preview-irev-result", value: %{user_id: Map.get(@officer, :user_id)})}
+                      class="group inline-flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-[12px] font-semibold text-white shadow-sm transition hover:bg-indigo-700 active:scale-95"
+                    >
+                      <.icon name="hero-eye" class="h-4 w-4 group-[.phx-click-loading]:hidden" />
+                      <.icon name="hero-arrow-path" class="hidden h-4 w-4 animate-spin group-[.phx-click-loading]:block" />
+                      Preview uploaded result
+                    </button>
+                  </div>
+                </.report_card>
               </div>
 
               <!-- Category dropdown rows -->
@@ -674,6 +741,131 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
 
   defp format_time(nil), do: "—"
   defp format_time(dt), do: Calendar.strftime(dt, "%b %-d, %Y %-I:%M %p")
+
+  # ---------------------------------------------------------------------------
+  # Performance Score + IReV upload (top analytics cards)
+  # ---------------------------------------------------------------------------
+
+  defp pill_classes, do: "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12px] font-semibold"
+
+  defp perf_view(officer) do
+    score = Map.get(officer, :perf_score)
+
+    %{
+      state: perf_state(Map.get(officer, :perf_type)),
+      score_text: perf_score_text(score),
+      pct: perf_pct(score),
+      time: officer_time(Map.get(officer, :perf_time))
+    }
+  end
+
+  defp irev_view(officer) do
+    %{
+      uploaded: Map.get(officer, :result_upload_to_irev),
+      time: officer_time(Map.get(officer, :result_upload_to_irev_time))
+    }
+  end
+
+  # :winning | :losing | :none
+  defp perf_state(val) when is_binary(val) do
+    case val |> String.trim() |> String.downcase() do
+      "winning" -> :winning
+      "losing" -> :losing
+      _ -> :none
+    end
+  end
+
+  defp perf_state(val) when val in [:winning, :losing], do: val
+  defp perf_state(_), do: :none
+
+  # Score arrives as a percentage number (10, 11, ... 100). Returns "NN%" or nil.
+  defp perf_score_text(val) when is_integer(val), do: "#{val}%"
+  defp perf_score_text(val) when is_float(val), do: "#{round(val)}%"
+
+  defp perf_score_text(val) when is_binary(val) do
+    case val |> String.trim() |> String.trim_trailing("%") |> String.trim() do
+      "" -> nil
+      num -> num <> "%"
+    end
+  end
+
+  defp perf_score_text(_), do: nil
+
+  # 0..100 for the progress bar.
+  defp perf_pct(val) when is_integer(val), do: clamp_pct(val)
+  defp perf_pct(val) when is_float(val), do: clamp_pct(round(val))
+
+  defp perf_pct(val) when is_binary(val) do
+    case Float.parse(String.trim(val)) do
+      {n, _rest} -> clamp_pct(round(n))
+      :error -> 0
+    end
+  end
+
+  defp perf_pct(_), do: 0
+
+  defp clamp_pct(n), do: n |> max(0) |> min(100)
+
+  defp perf_label(:winning), do: "WINNING"
+  defp perf_label(:losing), do: "LOSING"
+  defp perf_label(_), do: "NO DATA"
+
+  defp perf_tone(:winning), do: :good
+  defp perf_tone(:losing), do: :bad
+  defp perf_tone(_), do: :neutral
+
+  defp perf_text_class(:winning), do: "text-emerald-600 dark:text-emerald-400"
+  defp perf_text_class(:losing), do: "text-rose-600 dark:text-rose-400"
+  defp perf_text_class(_), do: "text-slate-900 dark:text-slate-100"
+
+  defp perf_bar_class(:winning), do: "bg-emerald-500"
+  defp perf_bar_class(:losing), do: "bg-rose-500"
+  defp perf_bar_class(_), do: "bg-slate-400"
+
+  defp irev_label(true), do: "Uploaded"
+  defp irev_label(false), do: "Not uploaded"
+  defp irev_label(_), do: "—"
+
+  defp irev_tone(true), do: :good
+  defp irev_tone(false), do: :bad
+  defp irev_tone(_), do: :neutral
+
+  defp irev_text_class(true), do: "text-emerald-600 dark:text-emerald-400"
+  defp irev_text_class(false), do: "text-rose-600 dark:text-rose-400"
+  defp irev_text_class(_), do: "text-slate-900 dark:text-slate-100"
+
+  # Lagos time (HH:MM:SS) for the officer's string / DateTime timestamps.
+  defp officer_time(nil), do: "—"
+  defp officer_time(""), do: "—"
+
+  defp officer_time(value) when is_binary(value) do
+    normalized = String.replace(value, " ", "T")
+
+    case DateTime.from_iso8601(normalized) do
+      {:ok, dt, _offset} ->
+        officer_time(dt)
+
+      _ ->
+        case String.split(normalized, "T") do
+          [_date, time_part] ->
+            time_part |> String.split("Z") |> List.first() |> String.slice(0, 8)
+
+          _ ->
+            value
+        end
+    end
+  end
+
+  defp officer_time(%DateTime{} = dt) do
+    dt |> DateTime.add(@lagos_offset_seconds, :second) |> Calendar.strftime("%H:%M:%S")
+  end
+
+  defp officer_time(%NaiveDateTime{} = dt) do
+    dt |> NaiveDateTime.add(@lagos_offset_seconds, :second) |> Calendar.strftime("%H:%M:%S")
+  end
+
+  defp officer_time(%Time{} = t), do: Calendar.strftime(t, "%H:%M:%S")
+  defp officer_time(_), do: "—"
 
   # Party Agent
   defp party_agent_value("agentClearance", 1), do: "Cleared"

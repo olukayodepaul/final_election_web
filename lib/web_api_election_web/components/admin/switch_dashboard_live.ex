@@ -10,9 +10,10 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
   alias WebApiElection.Reporting.WardSecurityReport
   alias WebApiElection.Reporting.PartyAgentReport
   alias WebApiElection.Reporting.ElectionResultReportQuery
-  alias WebApiElection.Elections.ElectionQuery
-  alias WebApiElection.Reporting.ElectionResultReportEC8AQuery
   alias WebApiElection.Reporting.ElectionCollationQuery
+  alias WebApiElection.Reporting.ElectionResultReport
+  alias WebApiElection.Assignments.SupervisorWardAssignment
+  alias WebApiElection.Assignments.FieldOfficerAssignment
 
   import WebApiElectionWeb.Admin.SwitchDashboardLive.Components.DashboardPage
   import WebApiElectionWeb.Admin.SwitchDashboardLive.Components.PartiesPage
@@ -41,6 +42,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     {"live", "Live Monitor", "hero-signal"},
     {"cdrs", "CDRs", "hero-phone-arrow-up-right"},
     {"routes", "Pu Locations", "hero-arrows-right-left"}
+  ]
+
+  # Hardcoded: the elections list is no longer fetched from the DB.
+  @elections [%{id: 1, name: "Presidential"}]
+
+  @ec8a_nav_items [
+     {"ec8a-1", "Election Form", "hero-document-chart-bar"}
   ]
 
   @implemented_pages ~w(dashboard parties live cdrs election-result-view)
@@ -209,18 +217,6 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
   def mount(_params, session, socket) do
     supervisor_id = session["user_id"] || 1
 
-    elections = ElectionQuery.list_by_type()
-
-    election_nav_items =
-      Enum.map(elections, fn election ->
-        {"election-#{election.id}", election.name, election.icon || "hero-chart-bar"}
-      end)
-
-    ec8a_nav_items =
-      Enum.map(elections, fn election ->
-        {"ec8a-#{election.id}", election.name, election.icon || "hero-document-chart-bar"}
-      end)
-
     socket =
       if connected?(socket) do
         Phoenix.PubSub.subscribe(WebApiElection.PubSub, "inec_official:#{supervisor_id}")
@@ -241,9 +237,8 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
       |> assign(:selected_live_officer, nil)
       |> assign(:party_agent_report, nil)
       |> assign(:loading_party_agent, false)
-      |> assign(:election_nav_items, election_nav_items)
-      |> assign(:ec8a_nav_items, ec8a_nav_items)
-      |> assign(:elections_result_page, elections)
+      |> assign(:ec8a_nav_items, @ec8a_nav_items)
+      |> assign(:elections_result_page, @elections)
       |> assign(:implemented_pages, @implemented_pages)
       |> assign(:today_label, Calendar.strftime(Date.utc_today(), "%A, %B %-d, %Y"))
       |> assign(:sidebar_collapsed, false)
@@ -261,7 +256,6 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
       |> assign(:current_election_name, nil)
       |> assign(:current_ec8a_election_id, nil)
       |> assign(:current_ec8a_election_name, nil)
-      |> assign(:ec8a_overview_election_id, nil)
       |> assign(:collation_election_id, nil)
       |> assign(:collation_ward, nil)
 
@@ -278,6 +272,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     {:noreply, socket |> patch_field_officer(report) |> refresh_open_report(report)}
   end
 
+  # Only EC8A uploads belong on the EC8A page; other forms are ignored.
+  def handle_info({:election_form_uploaded, %{election_form: "ec8a"} = summary}, socket) do
+    {:noreply, add_ec8a_report(socket, summary)}
+  end
+
+  def handle_info({:election_form_uploaded, _other_form}, socket), do: {:noreply, socket}
+
   defp patch_field_officer(socket, report) do
     case socket.assigns[:field_officer] do
       %Phoenix.LiveView.AsyncResult{ok?: true, result: officers} = async ->
@@ -293,6 +294,24 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
           end)
 
         assign(socket, :field_officer, %{async | result: updated_officers})
+
+      _not_loaded_yet ->
+        socket
+    end
+  end
+
+  # Adds the new upload to the already-loaded :ec8a_reports map
+  # (%{user_id => [report, ...]}, newest first). Removing by id first means
+  # a retried/duplicate send never shows up twice.
+  defp add_ec8a_report(socket, summary) do
+    case socket.assigns[:ec8a_reports] do
+      %Phoenix.LiveView.AsyncResult{ok?: true, result: by_user} = async when is_map(by_user) ->
+        updated =
+          Map.update(by_user, summary.user_id, [summary], fn list ->
+            [summary | Enum.reject(list, &(&1.id == summary.id))]
+          end)
+
+        assign(socket, :ec8a_reports, %{async | result: updated})
 
       _not_loaded_yet ->
         socket
@@ -510,29 +529,31 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     end
   end
 
+  # EC8A page: list of field officers assigned to this supervisor's wards,
+  # plus every result upload (election_result_report) for those officers.
+  # Loads :ec8a_officers AND :ec8a_reports in one async task.
   defp load_page_data(socket, "ec8a-" <> id) do
     case Integer.parse(id) do
       {election_id, ""} ->
         election = Enum.find(socket.assigns.elections_result_page, &(&1.id == election_id))
-        manager_id = socket.assigns.supervisor_id
+        supervisor_id = socket.assigns.supervisor_id
 
-        socket =
-          socket
-          |> assign(:current_ec8a_election_id, election_id)
-          |> assign(:current_ec8a_election_name, election && election.name)
+        socket
+        |> assign(:current_ec8a_election_id, election_id)
+        |> assign(:current_ec8a_election_name, election && election.name)
+        |> assign_async([:ec8a_officers, :ec8a_reports], fn ->
+          assignments = SupervisorWardAssignment.active_for_supervisor(supervisor_id)
+          officers = FieldOfficerAssignment.active_for_wards(assignments)
 
-        if socket.assigns.ec8a_overview_election_id == election_id do
-          socket
-        else
-          socket
-          |> assign(:ec8a_overview_election_id, election_id)
-          |> assign_async([:ec8a_results, :ec8a_overview], fn ->
-            results = ElectionResultReportEC8AQuery.fetch_results_for_manager(manager_id, election_id)
-            overview = ElectionResultReportEC8AQuery.manager_overview(results, manager_id)
+          # %{user_id => [%{id, user_id, pu_id, election_name, created_at}, ...]}
+          reports =
+            officers
+            |> Enum.map(& &1.user_id)
+            |> Enum.uniq()
+            |> ElectionResultReport.list_for_users()
 
-            {:ok, %{ec8a_results: results, ec8a_overview: overview}}
-          end)
-        end
+          {:ok, %{ec8a_officers: officers, ec8a_reports: reports}}
+        end)
 
       _ ->
         socket
@@ -601,6 +622,21 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
 
   defp to_int(id) when is_integer(id), do: id
   defp to_int(id) when is_binary(id), do: String.to_integer(id)
+
+  # True only if `report_id` is one of the uploads already loaded for this supervisor's
+  # officers. Stops a tampered "view_report" event from reading someone else's report.
+  defp report_visible?(socket, report_id) do
+    case socket.assigns[:ec8a_reports] do
+      %Phoenix.LiveView.AsyncResult{ok?: true, result: by_user} when is_map(by_user) ->
+        by_user
+        |> Map.values()
+        |> List.flatten()
+        |> Enum.any?(&(&1.id == report_id))
+
+      _ ->
+        false
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # Events
@@ -679,6 +715,21 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
      |> assign(:loading_party_agent, false)}
   end
 
+  # Live modal "Upload Result to IReV" card: opens the uploaded result in the existing
+  # election_result_modal. Only works for the officer whose modal is currently open.
+  def handle_event("preview-irev-result", %{"user_id" => user_id}, socket) do
+    officer = socket.assigns.selected_live_officer
+    uid = to_int(user_id)
+
+    with %{user_id: ^uid} <- officer,
+         %{^uid => [%{id: report_id} | _]} <- ElectionResultReport.list_for_users([uid]),
+         %{} = record <- ElectionResultReport.get_for_preview(report_id) do
+      {:noreply, assign(socket, :selected_election_result, record)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "No uploaded result found for this officer")}
+    end
+  end
+
   def handle_event("send-live-message", %{"body" => body}, socket) do
     officer = socket.assigns.selected_live_officer
 
@@ -699,29 +750,16 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     {:noreply, assign(socket, :messages, socket.assigns.messages ++ [bubble])}
   end
 
-  def handle_event("open-election-result-modal", %{"user_id" => user_id} = params, socket) do
+  def handle_event("open-election-result-modal", %{"user_id" => user_id}, socket) do
     user_id_int = to_int(user_id)
-    pu_code = params["pu_code"]
 
     record =
-      if ec8a_page?(socket.assigns.page) do
-        case socket.assigns[:ec8a_results] do
-          %Phoenix.LiveView.AsyncResult{ok?: true, result: results} ->
-            Enum.find(results, fn r ->
-              r.user_id == user_id_int && (is_nil(pu_code) || r.pu_code == pu_code)
-            end)
+      case socket.assigns[:election_result_view] do
+        %Phoenix.LiveView.AsyncResult{ok?: true, result: results} ->
+          Enum.find(results, fn r -> r.user_id == user_id_int end)
 
-          _ ->
-            nil
-        end
-      else
-        case socket.assigns[:election_result_view] do
-          %Phoenix.LiveView.AsyncResult{ok?: true, result: results} ->
-            Enum.find(results, fn r -> r.user_id == user_id_int end)
-
-          _ ->
-            nil
-        end
+        _ ->
+          nil
       end
 
     {:noreply, assign(socket, :selected_election_result, record)}
@@ -737,6 +775,18 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
 
   def handle_event("clear-collation-ward", _params, socket) do
     {:noreply, assign(socket, :collation_ward, nil)}
+  end
+
+  # EC8A page: "View" button on an upload. Loads the full election_result_report and opens
+  # the existing election_result_modal. Invalid or out-of-scope ids are ignored.
+  def handle_event("view_report", %{"id" => id}, socket) do
+    with {report_id, ""} <- Integer.parse(to_string(id)),
+         true <- report_visible?(socket, report_id),
+         %{} = record <- ElectionResultReport.get_for_preview(report_id) do
+      {:noreply, assign(socket, :selected_election_result, record)}
+    else
+      _ -> {:noreply, socket}
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -815,24 +865,6 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
               <.icon name={icon} class="h-5 w-5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" />
               <span :if={!@sidebar_collapsed} class="truncate">
                 {label}
-              </span>
-            </.link>
-
-            <.link
-              :for={{key, label, icon} <- @election_nav_items}
-              patch={~p"/admin/switch?page=#{key}"}
-              title={if @sidebar_collapsed, do: label, else: nil}
-              class={[
-                "nav-item w-full flex items-center rounded-lg transition-colors group",
-                @sidebar_collapsed && "justify-center p-2.5",
-                !@sidebar_collapsed && "gap-3 px-3 py-2 text-left",
-                @page == key && "text-brand bg-blue-50 dark:bg-blue-500/10 font-medium",
-                @page != key && "text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-900"
-              ]}
-            >
-              <.icon name={icon} class="h-5 w-5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity" />
-              <span :if={!@sidebar_collapsed} class="truncate">
-                {label} Result Collation
               </span>
             </.link>
 
@@ -962,9 +994,9 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
           />
 
           <.presidential_ec8a_page
-            :if={ec8a_page?(@page) && @current_ec8a_election_name == "Presidential" && assigns[:ec8a_overview] && assigns[:ec8a_results]}
-            overview={@ec8a_overview}
-            results={@ec8a_results}
+            :if={ec8a_page?(@page) && @current_ec8a_election_name == "Presidential" && assigns[:ec8a_officers] && assigns[:ec8a_reports]}
+            officers={@ec8a_officers}
+            reports={@ec8a_reports}
             election_name={@current_ec8a_election_name}
           />
         </main>

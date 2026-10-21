@@ -16,6 +16,10 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     field :are_security_present,       :boolean
     field :is_agent_at_polling_unit,   :boolean
 
+    field :perf_time,                  :utc_datetime
+    field :perf_score,                 :integer
+    field :perf_type,                  :string
+
     # Matching varchar(50) in DB (or change DB to boolean via migration if intended)
     field :did_inec_clear_agent,       :string
     field :is_voters_verify_with_bvas, :string

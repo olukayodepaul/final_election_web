@@ -356,6 +356,7 @@ defmodule WebApiElection.ExternalSocket.Connection do
         "3" -> insert_polling_unit_security_report(state, user_id, outer, inner)
         "4" -> insert_ward_security_report(state, user_id, outer, inner)
         "5" -> insert_party_agent_report(state, user_id, outer, inner)
+        "6" -> election_forms_upload(state, user_id, outer, inner)
         _ -> :ok
       end
     else
@@ -470,7 +471,6 @@ defmodule WebApiElection.ExternalSocket.Connection do
       |> Map.put("isVotersVerifyWithBvasTime", saved.is_voters_verify_with_bvas_time)
       |> Map.put("BvasFunc", saved.is_bvas_working_time)
       |> Map.put("Bavai", saved.is_bvas_available_time)
-      |> Map.put("AcrTime", saved.accr_started_at)
       |> Map.put("voteStart", saved.voting_started_at)
       |> Map.put("InecRr", saved.inec_ar_time)
       |> Map.put("elecConClusive", saved.is_conclusive_time)
@@ -641,6 +641,87 @@ defmodule WebApiElection.ExternalSocket.Connection do
     %{report | payload: payload}
   end
 
+  ## --- Election forms (EC8A etc.) upload --------------------------------------
+
+  defp election_forms_upload(state, user_id, outer, inner) do
+
+
+    IO.inspect(outer)
+    IO.inspect(inner)
+
+    {election_type, election_name} =
+      case String.split(outer["leadingName"] || "", "//", parts: 2) do
+        [type, name] -> {type, name}
+        [name] -> {nil, name}
+      end
+
+    type_map = decode_json(outer["type"])
+    details = decode_json(type_map["electionDetails"])
+
+    {pus, wards, lgs, states} =
+      case outer["trailName"] do
+        "ec8a" ->
+          details = decode_json(type_map["electionDetails"])
+          {details["puId"], details["wardId"], details["lgId"], details["stateId"]}
+
+        "ec8a_video" ->
+          {type_map["puId"], type_map["wardId"], type_map["lgId"], type_map["stateId"]}
+
+        other ->
+          flat? = is_binary(other) and String.ends_with?(other, "_video")
+          d = if flat?, do: type_map, else: decode_json(type_map["electionDetails"])
+          {d["puId"], d["wardId"], d["lgId"], d["stateId"]}
+      end
+
+    attrs = %{
+      uuids: outer["id"],
+      user_id: user_id,
+      election_type: election_type,
+      election_name: election_name,
+      election_form: outer["trailName"],
+      pu: outer["polling_unit_code"],
+      ward: outer["ward_code"],
+      lg: outer["lg_code"],
+      states: outer["state_code"],
+      pu_id: pus,
+      ward_id: wards,
+      lg_id: lgs,
+      state_id: states,
+      results: decode_json(inner),
+      image_url: outer["remote_media_url"],
+      variables: type_map
+    }
+
+    case WebApiElection.Reporting.ElectionResultReportQuery.insert_report(attrs) do
+      {:ok, report} ->
+        broadcast_election_form(state, report)
+
+      {:error, changeset} ->
+        Logger.error("Failed to insert election form upload: #{inspect(changeset.errors)}")
+    end
+  rescue
+    e ->
+      Logger.error("election_forms_upload crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
+  end
+
+  # Same light shape as ElectionResultReport.list_for_users/1, so the LiveView
+  # can drop it straight into its reports map.
+    defp broadcast_election_form(state, report) do
+    summary = %{
+      id: report.id,
+      user_id: report.user_id,
+      pu_id: report.pu_id,
+      election_name: report.election_name,
+      election_form: report.election_form,
+      created_at: report.created_at
+    }
+
+    Phoenix.PubSub.broadcast(
+      WebApiElection.PubSub,
+      "inec_official:#{state.user_id}",
+      {:election_form_uploaded, summary}
+    )
+  end
   ## --- Chat message -------------------------------------------------------------
 
   defp insert_message(state, user_id, outer, _inner) do
@@ -697,6 +778,17 @@ defmodule WebApiElection.ExternalSocket.Connection do
   end
 
   defp to_int(_), do: nil
+
+  defp decode_json(value) when is_map(value), do: value
+
+  defp decode_json(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, map} when is_map(map) -> map
+      _ -> %{}
+    end
+  end
+
+  defp decode_json(_), do: %{}
 
   defp parse_user_id(id) when is_binary(id) do
     case Integer.parse(id) do
