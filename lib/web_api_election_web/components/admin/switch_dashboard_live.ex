@@ -715,6 +715,21 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
      |> assign(:loading_party_agent, false)}
   end
 
+  # Live modal "Upload Result to IReV" card: opens the uploaded result in the existing
+  # election_result_modal. Only works for the officer whose modal is currently open.
+  def handle_event("preview-irev-result", %{"user_id" => user_id}, socket) do
+    officer = socket.assigns.selected_live_officer
+    uid = to_int(user_id)
+
+    with %{user_id: ^uid} <- officer,
+         %{^uid => [%{id: report_id} | _]} <- ElectionResultReport.list_for_users([uid]),
+         %{} = record <- ElectionResultReport.get_for_preview(report_id) do
+      {:noreply, assign(socket, :selected_election_result, record)}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "No uploaded result found for this officer")}
+    end
+  end
+
   def handle_event("send-live-message", %{"body" => body}, socket) do
     officer = socket.assigns.selected_live_officer
 

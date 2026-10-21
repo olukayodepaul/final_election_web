@@ -123,6 +123,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
                   <.header_cell label={"Result Upload to \nIReV Status"} full="Result uploaded to IReV portal" align="center" />
                   <.header_cell label={"Party Agent Arrival at Collation Centre"} full="Party Agent arrival at Collation Center" align="center" />
                   <.header_cell label={"Collation Centre \nProgress Status"} full="INEC official proceeded to Ward Collation Center" align="center" />
+                  <.header_cell label={"Performance \nScore"} full="Allow Party to make a quick decision" align="center" />
                 </tr>
               </thead>
 
@@ -133,7 +134,7 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
                   phx-value-id={v.user_id}
                   class={["group cursor-pointer transition-colors", row_class(v)]}
                 >
-                  <td class="px-4 py-3 align-middle whitespace-nowrap">
+                  <td class={["px-4 py-3 align-middle whitespace-nowrap", first_cell_class(v)]}>
                     <div class="flex items-center gap-2.5">
                       <div class="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white text-[11px] font-bold flex items-center justify-center shadow-sm">
                         {initials(Map.get(v, :field_officer_name))}
@@ -228,6 +229,10 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
                       status={v.has_proceed_to_ward}
                       time={v.collation_status_time}
                     />
+                  </td>
+
+                  <td class="px-4 py-3 align-middle text-center">
+                    <.perf_badge type={v.perf_type} score={v.perf_score} time={v.perf_time} />
                   </td>
                 </tr>
               </tbody>
@@ -378,6 +383,78 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
   defp has_time?(_), do: true
 
   # ---------------------------------------------------------------------------
+  # Performance (winning / losing)
+  # ---------------------------------------------------------------------------
+
+  # Returns :winning | :losing | :none
+  defp perf_state(v) when is_map(v), do: v |> Map.get(:perf_type) |> perf_state()
+
+  defp perf_state(val) when is_binary(val) do
+    case val |> String.trim() |> String.downcase() do
+      "winning" -> :winning
+      "losing" -> :losing
+      _ -> :none
+    end
+  end
+
+  defp perf_state(val) when val in [:winning, :losing], do: val
+  defp perf_state(_), do: :none
+
+  defp losing?(v), do: perf_state(v) == :losing
+
+  # Score arrives as a percentage number (10, 11, ... 100). Returns "NN%" or nil.
+  defp format_score(val) when is_integer(val), do: "#{val}%"
+  defp format_score(val) when is_float(val), do: "#{round(val)}%"
+
+  defp format_score(val) when is_binary(val) do
+    case val |> String.trim() |> String.trim_trailing("%") |> String.trim() do
+      "" -> nil
+      num -> num <> "%"
+    end
+  end
+
+  defp format_score(_), do: nil
+
+  # ── Performance score badge ──
+  attr :type, :any, default: nil
+  attr :score, :any, default: nil
+  attr :time, :any, default: nil
+
+  defp perf_badge(assigns) do
+    assigns =
+      assigns
+      |> assign(:state, perf_state(assigns.type))
+      |> assign(:score_text, format_score(assigns.score))
+
+    ~H"""
+    <div class="flex justify-center">
+      <div class={[badge_base(), perf_color(@state)]}>
+        <span class="text-[11px] font-semibold leading-tight uppercase">
+          {perf_label(@state)}
+        </span>
+        <span :if={@state != :none and @score_text} class="text-[13px] font-bold font-mono leading-none tabular-nums">
+          {@score_text}
+        </span>
+        <span
+          :if={@state != :none and has_time?(@time)}
+          class="text-[10px] font-mono leading-none opacity-80"
+        >
+          {format_time(@time)}
+        </span>
+      </div>
+    </div>
+    """
+  end
+
+  defp perf_label(:winning), do: "WINNING"
+  defp perf_label(:losing), do: "LOSING"
+  defp perf_label(_), do: "-"
+
+  defp perf_color(:winning), do: @badge_green
+  defp perf_color(:losing), do: @badge_red
+  defp perf_color(_), do: @badge_grey
+
+  # ---------------------------------------------------------------------------
   # Row colour
   # ---------------------------------------------------------------------------
 
@@ -387,6 +464,10 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
         v.security_present == "present" && v.is_bvas_working
 
     cond do
+      # LOSING overrides everything: alert for the party agent to act quickly.
+      losing?(v) ->
+        "bg-rose-300 dark:bg-rose-800/70 hover:bg-rose-400 dark:hover:bg-rose-800/90"
+
       v.is_conclusive_time ->
         "bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-50 dark:hover:bg-rose-950/30"
 
@@ -396,6 +477,11 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
       true ->
         "hover:bg-slate-50 dark:hover:bg-slate-800/50"
     end
+  end
+
+  # Red left border on the first cell of a losing row so it reads as flagged.
+  defp first_cell_class(v) do
+    if losing?(v), do: "border-l-4 border-rose-600 dark:border-rose-400", else: nil
   end
 
   # ── Party agent cleared by PO: DB value is "Cleared" or "Not Cleared" ──
