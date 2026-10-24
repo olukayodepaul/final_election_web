@@ -357,6 +357,7 @@ defmodule WebApiElection.ExternalSocket.Connection do
         "4" -> insert_ward_security_report(state, user_id, outer, inner)
         "5" -> insert_party_agent_report(state, user_id, outer, inner)
         "6" -> election_forms_upload(state, user_id, outer, inner)
+        "8" -> performance_score(state, user_id, outer, inner)
         _ -> :ok
       end
     else
@@ -527,14 +528,14 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
   defp insert_ward_security_report(state, user_id, outer, inner) do
     case WebApiElection.Reporting.WardSecurityReportQuery.insert_report(
-           user_id,
-           outer["id"],
-           outer["polling_unit_code"],
-           outer["ward_code"],
-           outer["lg_code"],
-           outer["state_code"],
-           inner
-         ) do
+          user_id,
+          outer["id"],
+          outer["polling_unit_code"],
+          outer["ward_code"],
+          outer["lg_code"],
+          outer["state_code"],
+          inner
+        ) do
       {:ok,
        %WebApiElection.Reporting.WardSecurityReport{payload: payload, user_id: report_user_id} =
            report} ->
@@ -641,13 +642,19 @@ defmodule WebApiElection.ExternalSocket.Connection do
     %{report | payload: payload}
   end
 
+  defp performance_score(state, user_id, _outer, inner) do
+
+    [perf, scores] = String.split(inner, ":")
+    score_value = String.to_integer(scores)
+
+
+
+    IO.inspect(user_id)
+  end
   ## --- Election forms (EC8A etc.) upload --------------------------------------
 
   defp election_forms_upload(state, user_id, outer, inner) do
 
-
-    IO.inspect(outer)
-    IO.inspect(inner)
 
     {election_type, election_name} =
       case String.split(outer["leadingName"] || "", "//", parts: 2) do
@@ -661,8 +668,14 @@ defmodule WebApiElection.ExternalSocket.Connection do
     {pus, wards, lgs, states} =
       case outer["trailName"] do
         "ec8a" ->
+          # let send
           details = decode_json(type_map["electionDetails"])
-          {details["puId"], details["wardId"], details["lgId"], details["stateId"]}
+          {
+            details["puId"],
+            details["wardId"],
+            details["lgId"],
+            details["stateId"]
+          }
 
         "ec8a_video" ->
           {type_map["puId"], type_map["wardId"], type_map["lgId"], type_map["stateId"]}
@@ -694,8 +707,21 @@ defmodule WebApiElection.ExternalSocket.Connection do
 
     case WebApiElection.Reporting.ElectionResultReportQuery.insert_report(attrs) do
       {:ok, report} ->
-        broadcast_election_form(state, report)
 
+        if outer["trailName"] == "ec8a" do
+          attrs =
+            %{}
+            |> put_if(:result_upload_to_irev, type_map["isFormEc8aUploadedToIrev"])
+
+          saved =
+            save_state(user_id, fn ->
+              WebApiElection.Elections.ElecCurrentStateQuery.update_irev(user_id, attrs)
+            end)
+
+            broadcast_report(state, extract_irev(report, saved))
+        end
+
+      :ok
       {:error, changeset} ->
         Logger.error("Failed to insert election form upload: #{inspect(changeset.errors)}")
     end
@@ -704,26 +730,18 @@ defmodule WebApiElection.ExternalSocket.Connection do
       Logger.error("election_forms_upload crashed: #{Exception.format(:error, e, __STACKTRACE__)}")
   end
 
-  # Same light shape as ElectionResultReport.list_for_users/1, so the LiveView
-  # can drop it straight into its reports map.
-    defp broadcast_election_form(state, report) do
-    summary = %{
-      id: report.id,
-      user_id: report.user_id,
-      pu_id: report.pu_id,
-      election_name: report.election_name,
-      election_form: report.election_form,
-      created_at: report.created_at
-    }
+  defp extract_irev(report, nil), do: report
 
-    Phoenix.PubSub.broadcast(
-      WebApiElection.PubSub,
-      "inec_official:#{state.user_id}",
-      {:election_form_uploaded, summary}
-    )
+  defp extract_irev(%WebApiElection.Reporting.ElectionResultReport{} = report, saved) do
+    variables =
+      (report.variables || %{})
+      |> Map.put("irevTime", saved.result_upload_to_irev_time)
+      |> Map.put("irevCount", saved.irev_count)
+      |> Map.put("irevUpload", saved.result_upload_to_irev)
+    %{report | variables: variables}
   end
-  ## --- Chat message -------------------------------------------------------------
 
+  ## --- Chat message -------------------------------------------------------------
   defp insert_message(state, user_id, outer, _inner) do
     msg_type = outer["msg_type"]
 

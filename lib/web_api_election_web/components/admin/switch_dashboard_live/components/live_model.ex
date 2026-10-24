@@ -328,6 +328,9 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
                       <div class={["text-lg font-semibold mt-0.5", irev_text_class(@irev.uploaded)]}>
                         {irev_label(@irev.uploaded)}
                       </div>
+                      <div class="text-[11px] font-mono tabular-nums text-slate-500 dark:text-slate-400">
+                        Count: {@irev.count}
+                      </div>
                     </div>
                   </div>
                 </button>
@@ -367,10 +370,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
                       {irev_label(@irev.uploaded)}
                     </span>
                   </.report_line>
-                  <.report_line label="Uploaded At">
+                  <.report_line label="Upload Count">
+                    <span class="font-semibold tabular-nums">{@irev.count}</span>
+                  </.report_line>
+                  <.report_line label="Last Upload At">
                     <span class="font-mono text-[11px] font-semibold">{@irev.time}</span>
                   </.report_line>
-                  <div :if={@irev.uploaded == true} class="px-3 py-2.5">
+                  <div :if={@irev.uploaded} class="px-3 py-2.5">
                     <button
                       type="button"
                       phx-click={JS.push("preview-irev-result", value: %{user_id: Map.get(@officer, :user_id)})}
@@ -759,12 +765,30 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LiveModal do
     }
   end
 
+  # IReV: count 1 or more = uploaded (green), 0 or empty = not uploaded (red).
+  # The count is converted to a number first, so integer, float, Decimal and string all work.
   defp irev_view(officer) do
+    count = irev_count_to_int(Map.get(officer, :irev_count))
+
     %{
-      uploaded: Map.get(officer, :result_upload_to_irev),
+      count: count,
+      uploaded: count >= 1,
       time: officer_time(Map.get(officer, :result_upload_to_irev_time))
     }
   end
+
+  defp irev_count_to_int(n) when is_integer(n), do: n
+  defp irev_count_to_int(n) when is_float(n), do: trunc(n)
+
+  defp irev_count_to_int(n) when is_binary(n) do
+    case Integer.parse(String.trim(n)) do
+      {int, _rest} -> int
+      :error -> 0
+    end
+  end
+
+  defp irev_count_to_int(%Decimal{} = n), do: n |> Decimal.round() |> Decimal.to_integer()
+  defp irev_count_to_int(_), do: 0
 
   # :winning | :losing | :none
   defp perf_state(val) when is_binary(val) do

@@ -43,6 +43,7 @@ defmodule WebApiElection.SupervisorMonitorQuery do
         is_bvas_available:          d.is_bvas_available,
         is_bvas_working:            d.is_bvas_working,
         is_voters_verify:           d.is_voters_verify,
+        irev_count:                 d.irev_count,
         is_voters_verify_with_bvas: d.is_voters_verify_with_bvas,
         is_voters_verify_with_bvas_time: d.is_voters_verify_with_bvas_time,
         perf_time:                  d.perf_time,

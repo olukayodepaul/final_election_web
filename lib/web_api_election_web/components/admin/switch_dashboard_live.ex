@@ -279,6 +279,8 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
 
   def handle_info({:election_form_uploaded, _other_form}, socket), do: {:noreply, socket}
 
+  # Patches the officer row in the live table AND the officer shown in the open modal,
+  # so a new IReV count or any other live update shows up without reopening the modal.
   defp patch_field_officer(socket, report) do
     case socket.assigns[:field_officer] do
       %Phoenix.LiveView.AsyncResult{ok?: true, result: officers} = async ->
@@ -293,10 +295,23 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
             end
           end)
 
-        assign(socket, :field_officer, %{async | result: updated_officers})
+        socket
+        |> assign(:field_officer, %{async | result: updated_officers})
+        |> sync_selected_officer(report, patch)
 
       _not_loaded_yet ->
         socket
+    end
+  end
+
+  # Keeps the open modal's officer in step with live patches.
+  defp sync_selected_officer(socket, report, patch) do
+    officer = socket.assigns.selected_live_officer
+
+    if officer && officer.user_id == Map.get(report, :user_id) do
+      assign(socket, :selected_live_officer, Map.merge(officer, patch))
+    else
+      socket
     end
   end
 
@@ -373,6 +388,15 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     |> maybe_put(:is_bvas_working_time, payload["BvasFunc"])
     |> maybe_put(:is_bvas_available_time, payload["Bavai"])
     |> maybe_put(:inec_ar_time, payload["InecRr"])
+  end
+
+  defp report_patch_fields(%WebApiElection.Reporting.ElectionResultReport{variables: variables}) do
+    variables = variables || %{}
+
+    %{}
+    |> maybe_put(:result_upload_to_irev_time, variables["irevTime"])
+    |> maybe_put(:irev_count, variables["irevCount"])
+    |> maybe_put(:result_upload_to_irev, variables["irevUpload"])
   end
 
   defp report_patch_fields(%WebApiElection.Reporting.PollingSecuriyReport{payload: payload}) do

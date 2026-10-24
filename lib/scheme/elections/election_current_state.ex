@@ -19,6 +19,7 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     field :perf_time,                  :utc_datetime
     field :perf_score,                 :integer
     field :perf_type,                  :string
+    field :irev_count,                 :integer
 
     # Matching varchar(50) in DB (or change DB to boolean via migration if intended)
     field :did_inec_clear_agent,       :string
@@ -233,5 +234,32 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     end
   end
 
+  @irev_fields [
+    :result_upload_to_irev
+  ]
+
+  def irev_changeset(elec_current_state, attrs) do
+    elec_current_state
+    |> cast(attrs, @irev_fields)
+    |> result_upload_to_irev_time()
+  end
+
+  defp result_upload_to_irev_time(changeset) do
+    # Once the stored value is true, keep it. Drop any incoming change to it.
+    changeset =
+      if changeset.data.result_upload_to_irev == true do
+        delete_change(changeset, :result_upload_to_irev)
+      else
+        changeset
+      end
+
+    # Every request: count + 1 and refresh the date
+    changeset
+    |> put_change(:irev_count, (changeset.data.irev_count || 0) + 1)
+    |> put_change(
+      :result_upload_to_irev_time,
+      DateTime.utc_now() |> DateTime.truncate(:second)
+    )
+  end
 
 end

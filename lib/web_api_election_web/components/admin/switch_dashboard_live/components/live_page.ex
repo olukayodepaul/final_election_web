@@ -59,9 +59,10 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
             icon="hero-check-badge"
             tone="violet"
           />
+          <%!-- IREV CHANGE: counted by irev_count > 1 --%>
           <.stat_card
             label="Uploaded to IReV"
-            value={Enum.count(officers, &(&1.result_upload_to_irev == true))}
+            value={Enum.count(officers, &irev_uploaded?(&1.irev_count))}
             icon="hero-cloud-arrow-up"
             tone="amber"
           />
@@ -215,9 +216,10 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
                     <.conclusion_badge value={v.is_conclusive} time={v.is_conclusive_time} />
                   </td>
 
+                  <%!-- IREV CHANGE: uses v.irev_count directly --%>
                   <td class="px-4 py-3 align-middle text-center">
                     <.irev_upload_badge
-                      uploaded={v.result_upload_to_irev}
+                      count={v.irev_count}
                       time={v.result_upload_to_irev_time}
                     />
                   </td>
@@ -618,8 +620,20 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
   defp bvas_working_color(_), do: @badge_grey
 
   # ── Result upload to IReV ──
+  # IREV CHANGE: irev_count greater than 1 = UPLOADED (green), otherwise NOT UPLOADED (red).
+  # The count is converted to a number first, so integer, float, Decimal and string all work.
+  # ── Result upload to IReV ──
+  # count 1 or more = UPLOADED (green), 0 or empty = NOT UPLOADED (red).
+  attr :count, :any, default: nil
+  attr :time, :any, default: nil
+
   defp irev_upload_badge(assigns) do
-    assigns = assign_new(assigns, :time, fn -> nil end)
+    count = irev_count_to_int(assigns.count)
+
+    assigns =
+      assigns
+      |> assign(:count_int, count)
+      |> assign(:uploaded, count >= 1)
 
     ~H"""
     <div class="flex justify-center">
@@ -627,24 +641,38 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive.Components.LivePage do
         <span class="text-[11px] font-semibold leading-tight uppercase">
           {irev_upload_label(@uploaded)}
         </span>
-        <span
-          :if={@uploaded == true and has_time?(@time)}
-          class="text-[10px] font-mono leading-none opacity-80"
-        >
+        <span :if={has_time?(@time)} class="text-[10px] font-mono leading-none opacity-80">
           {format_time(@time)}
+        </span>
+        <span class="text-[10px] font-mono leading-none opacity-80">
+          Count: {@count_int}
         </span>
       </div>
     </div>
     """
   end
 
+  # Used by the "Uploaded to IReV" stat card at the top. Same rule as the badge.
+  defp irev_uploaded?(count), do: irev_count_to_int(count) >= 1
+
+  defp irev_count_to_int(n) when is_integer(n), do: n
+  defp irev_count_to_int(n) when is_float(n), do: trunc(n)
+
+  defp irev_count_to_int(n) when is_binary(n) do
+    case Integer.parse(String.trim(n)) do
+      {int, _rest} -> int
+      :error -> 0
+    end
+  end
+
+  defp irev_count_to_int(%Decimal{} = n), do: n |> Decimal.round() |> Decimal.to_integer()
+  defp irev_count_to_int(_), do: 0
+
   defp irev_upload_label(true), do: "UPLOADED"
   defp irev_upload_label(false), do: "NOT UPLOADED"
-  defp irev_upload_label(_), do: "-"
 
   defp irev_upload_color(true), do: @badge_green
   defp irev_upload_color(false), do: @badge_red
-  defp irev_upload_color(_), do: @badge_grey
 
   # ── Polling unit voting progress ──
   defp conclusion_badge(assigns) do
