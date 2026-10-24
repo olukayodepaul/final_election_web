@@ -399,6 +399,13 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
     |> maybe_put(:result_upload_to_irev, variables["irevUpload"])
   end
 
+  defp report_patch_fields(%{perf_type: type, perf_score: score} = report) do
+    %{}
+    |> maybe_put(:perf_type, type)
+    |> maybe_put(:perf_score, score)
+    |> maybe_put(:perf_time, report.perf_time)
+  end
+
   defp report_patch_fields(%WebApiElection.Reporting.PollingSecuriyReport{payload: payload}) do
     %{}
     |> maybe_put(:security_present, payload["securityPresence"])
@@ -812,6 +819,8 @@ defmodule WebApiElectionWeb.Admin.SwitchDashboardLive do
       _ -> {:noreply, socket}
     end
   end
+
+
 
   # ---------------------------------------------------------------------------
   # Render

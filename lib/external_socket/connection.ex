@@ -643,13 +643,35 @@ defmodule WebApiElection.ExternalSocket.Connection do
   end
 
   defp performance_score(state, user_id, _outer, inner) do
+    with true <- is_binary(inner),
+        [perf, score] <- String.split(inner, ":", parts: 2),
+        {score_value, ""} <- Integer.parse(score) do
+      attrs =
+        %{}
+        |> put_if(:perf_type, perf)
+        |> put_if(:perf_score, score_value)
 
-    [perf, scores] = String.split(inner, ":")
-    score_value = String.to_integer(scores)
+      saved =
+        save_state(user_id, fn ->
+          WebApiElection.Elections.ElecCurrentStateQuery.update_perf_score(user_id, attrs)
+        end)
 
+      # Only broadcast if the DB update succeeded
+      if saved do
+        broadcast_report(state, %{
+          user_id: user_id,
+          perf_type: perf,
+          perf_score: score_value,
+          perf_time: saved.perf_time
 
+        })
+      end
+    else
+      _ ->
+        Logger.error("Invalid performance payload for user #{user_id}: #{inspect(inner)}")
+    end
 
-    IO.inspect(user_id)
+    :ok
   end
   ## --- Election forms (EC8A etc.) upload --------------------------------------
 

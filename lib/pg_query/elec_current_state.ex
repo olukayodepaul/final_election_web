@@ -30,6 +30,18 @@ defmodule WebApiElection.Elections.ElecCurrentStateQuery do
     end
   end
 
+  def update_perf_score(user_id, attrs) when is_map(attrs) do
+    case Repo.get_by(ElecCurrentState, user_id: user_id) do
+      nil ->
+        {:error, :not_found}
+
+      existing ->
+        existing
+        |> ElecCurrentState.perf_score_changeset(attrs)
+        |> Repo.update()
+    end
+  end
+
   @doc """
   Updates only the security_present field for a user_id.
   """

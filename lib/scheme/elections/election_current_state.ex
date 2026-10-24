@@ -262,4 +262,20 @@ defmodule WebApiElection.Elections.ElecCurrentState do
     )
   end
 
+   @perf_score_fields [
+    :perf_type,
+    :perf_score
+  ]
+
+  def perf_score_changeset(elec_current_state, attrs) do
+    elec_current_state
+    |> cast(attrs, @perf_score_fields)
+    |> perf_score_time()
+  end
+
+  defp perf_score_time(changeset) do
+    put_change(changeset, :perf_time, DateTime.utc_now() |> DateTime.truncate(:second))
+  end
+
+
 end
